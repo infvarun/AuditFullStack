@@ -66,8 +66,8 @@ def get_applications():
         
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         cursor.execute("""
-            SELECT id, audit_name, ci_id, audit_date_from, audit_date_to, 
-                   enable_followup_questions, created_at 
+            SELECT id, COALESCE(audit_name, name) as audit_name, ci_id, 
+                   start_date, end_date, created_at 
             FROM applications 
             ORDER BY created_at DESC
         """)
@@ -77,9 +77,9 @@ def get_applications():
             app_data = dict(row)
             app_data['auditName'] = app_data.pop('audit_name')
             app_data['ciId'] = app_data.pop('ci_id')
-            app_data['auditDateFrom'] = app_data.pop('audit_date_from')
-            app_data['auditDateTo'] = app_data.pop('audit_date_to')
-            app_data['enableFollowupQuestions'] = app_data.pop('enable_followup_questions')
+            app_data['auditDateFrom'] = app_data.pop('start_date')
+            app_data['auditDateTo'] = app_data.pop('end_date')
+            app_data['enableFollowupQuestions'] = False  # Default value
             app_data['createdAt'] = app_data.pop('created_at')
             applications.append(app_data)
         
@@ -104,15 +104,14 @@ def create_application():
         
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         cursor.execute("""
-            INSERT INTO applications (audit_name, ci_id, audit_date_from, audit_date_to, enable_followup_questions)
-            VALUES (%s, %s, %s, %s, %s)
-            RETURNING id, audit_name, ci_id, audit_date_from, audit_date_to, enable_followup_questions, created_at
+            INSERT INTO applications (audit_name, ci_id, start_date, end_date)
+            VALUES (%s, %s, %s, %s)
+            RETURNING id, audit_name, ci_id, start_date, end_date, created_at
         """, (
             data['auditName'],
             data['ciId'],
             data['auditDateFrom'],
-            data['auditDateTo'],
-            data.get('enableFollowupQuestions', False)
+            data['auditDateTo']
         ))
         
         row = cursor.fetchone()

@@ -5,7 +5,7 @@ console.log('🚀 Starting React + Flask development servers...');
 console.log('📦 React frontend: http://localhost:5000');
 console.log('🔗 Flask backend: http://localhost:8000');
 
-const bothProcess = exec('npx concurrently "npx vite --host 0.0.0.0 --port 5000" "cd server && python app.py" --names "React,Flask" --prefix-colors "cyan,yellow"', (error, stdout, stderr) => {
+const bothProcess = exec('npx concurrently "npx vite --host 0.0.0.0 --port 5000" "cd server && python simple_flask.py" --names "React,Flask" --prefix-colors "cyan,yellow"', (error, stdout, stderr) => {
   if (error) {
     console.error('Server error:', error);
   }

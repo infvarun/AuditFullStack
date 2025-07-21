@@ -33,7 +33,7 @@ export default function Dashboard() {
 
   // Filter applications based on search
   const filteredApplications = applications.filter(app => 
-    app.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    app.auditName.toLowerCase().includes(searchQuery.toLowerCase()) ||
     app.ciId.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
@@ -118,7 +118,7 @@ export default function Dashboard() {
                     >
                       <div>
                         <div className="flex items-center space-x-2 mb-1">
-                          <span className="font-medium text-slate-900">{app.name}</span>
+                          <span className="font-medium text-slate-900">{app.auditName}</span>
                           <Badge variant="outline" className="text-xs">
                             {app.ciId}
                           </Badge>
@@ -126,8 +126,8 @@ export default function Dashboard() {
                         <div className="flex items-center space-x-4 text-sm text-slate-600">
                           <span className="flex items-center">
                             <Calendar className="h-3 w-3 mr-1" />
-                            {app.startDate && app.endDate ? 
-                              `${new Date(app.startDate).toLocaleDateString()} - ${new Date(app.endDate).toLocaleDateString()}` : 
+                            {app.auditDateFrom && app.auditDateTo ? 
+                              `${new Date(app.auditDateFrom).toLocaleDateString()} - ${new Date(app.auditDateTo).toLocaleDateString()}` : 
                               'Date not set'
                             }
                           </span>
@@ -204,7 +204,7 @@ export default function Dashboard() {
                   <CardHeader className="pb-3">
                     <div className="flex items-center justify-between">
                       <CardTitle className="text-lg font-semibold text-white">
-                        {app.name}
+                        {app.auditName}
                       </CardTitle>
                       <Badge variant="secondary" className="bg-white/20 text-white border-white/30">
                         {app.ciId}
@@ -214,8 +214,8 @@ export default function Dashboard() {
                   <CardContent>
                     <h3 className="font-semibold text-white mb-2">Primary audit details</h3>
                     <p className="text-blue-100 text-sm leading-relaxed">
-                      Audit period: {app.startDate && app.endDate ? 
-                        `${new Date(app.startDate).toLocaleDateString()} - ${new Date(app.endDate).toLocaleDateString()}` : 
+                      Audit period: {app.auditDateFrom && app.auditDateTo ? 
+                        `${new Date(app.auditDateFrom).toLocaleDateString()} - ${new Date(app.auditDateTo).toLocaleDateString()}` : 
                         'Date not set'
                       }
                       <br />
