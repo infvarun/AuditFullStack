@@ -41,6 +41,29 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+def create_audit_folder(application_id, audit_name):
+    """Create audit folder for storing files"""
+    # Use application ID and sanitized audit name for folder
+    sanitized_name = secure_filename(audit_name.replace(' ', '_'))
+    folder_name = f"audit_{application_id}_{sanitized_name}"
+    folder_path = os.path.join(UPLOAD_FOLDER, folder_name)
+    os.makedirs(folder_path, exist_ok=True)
+    return folder_path
+
+def save_uploaded_file(file, folder_path, file_type):
+    """Save uploaded file to audit folder"""
+    if file and allowed_file(file.filename):
+        # Create unique filename with timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = secure_filename(file.filename)
+        name, ext = os.path.splitext(filename)
+        unique_filename = f"{file_type}_{timestamp}_{name}{ext}"
+        
+        file_path = os.path.join(folder_path, unique_filename)
+        file.save(file_path)
+        return file_path, unique_filename
+    return None, None
+
 def get_db_connection():
     """Get database connection"""
     try:
@@ -130,6 +153,9 @@ def create_application():
         row = cursor.fetchone()
         conn.commit()
         
+        # Create audit folder for file storage
+        audit_folder = create_audit_folder(row['id'], row['audit_name'])
+        
         app_data = {
             'id': row['id'],
             'auditName': row['audit_name'],
@@ -137,7 +163,8 @@ def create_application():
             'auditDateFrom': row['start_date'],
             'auditDateTo': row['end_date'],
             'enableFollowupQuestions': row['enable_followup_questions'],
-            'createdAt': row['created_at']
+            'createdAt': row['created_at'],
+            'auditFolder': audit_folder
         }
         
         return jsonify(app_data), 201
@@ -364,10 +391,24 @@ def process_excel():
         except:
             return jsonify({'error': 'Invalid column mappings format'}), 400
         
-        # Save file temporarily
-        filename = secure_filename(file.filename)
-        file_path = os.path.join(app.config['UPLOAD_FOLDER'], f"process_{filename}")
-        file.save(file_path)
+        # Get application info to create audit folder
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'error': 'Database connection failed'}), 500
+        
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute("SELECT audit_name FROM applications WHERE id = %s", (application_id,))
+        app_row = cursor.fetchone()
+        
+        if not app_row:
+            return jsonify({'error': 'Application not found'}), 404
+        
+        # Create audit folder and save file
+        audit_folder = create_audit_folder(application_id, app_row['audit_name'])
+        file_path, unique_filename = save_uploaded_file(file, audit_folder, file_type)
+        
+        if not file_path:
+            return jsonify({'error': 'Failed to save file'}), 500
         
         try:
             # Read Excel file
@@ -401,29 +442,26 @@ def process_excel():
                     subcategories.add(question_data['subProcess'])
             
             # Save to database
-            conn = get_db_connection()
-            if not conn:
-                return jsonify({'error': 'Database connection failed'}), 500
-            
-            cursor = conn.cursor(cursor_factory=RealDictCursor)
             
             # Insert data request record
             cursor.execute("""
                 INSERT INTO data_requests 
                 (application_id, file_name, file_size, file_type, questions, 
-                 total_questions, categories, subcategories, column_mappings)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                 total_questions, categories, subcategories, column_mappings, file_path, uploaded_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id, file_name, total_questions
             """, (
                 application_id,
-                filename,
-                len(file.read()),
+                unique_filename,
+                os.path.getsize(file_path),
                 file_type,
                 json.dumps(questions),
                 len(questions),
                 json.dumps(list(categories)),
                 json.dumps(list(subcategories)),
-                json.dumps(column_mappings)
+                json.dumps(column_mappings),
+                file_path,
+                datetime.now()
             ))
             
             result = cursor.fetchone()
@@ -433,13 +471,12 @@ def process_excel():
                 'id': result['id'],
                 'fileName': result['file_name'],
                 'totalQuestions': result['total_questions'],
-                'message': 'File processed successfully'
+                'message': 'File processed successfully',
+                'filePath': file_path
             }), 201
             
         finally:
-            # Clean up temporary file
-            if os.path.exists(file_path):
-                os.remove(file_path)
+            # Note: File is kept in audit folder, not removed
             
             if conn:
                 cursor.close()

@@ -69,7 +69,7 @@ export default function StepOne({ applicationId, setApplicationId, onNext, setCa
         endDate: (existingApplication as any).auditDateTo || existingApplication.endDate || "",
         ciId: existingApplication.ciId || "",
         settings: {
-          enableFollowUpQuestions: (existingApplication.settings as any)?.enableFollowUpQuestions ?? true,
+          enableFollowUpQuestions: (existingApplication as any).enableFollowupQuestions ?? (existingApplication.settings as any)?.enableFollowUpQuestions ?? true,
           emailNotifications: (existingApplication.settings as any)?.emailNotifications ?? true,
         },
       });

@@ -72,8 +72,14 @@ export default function StepTwo({ applicationId, onNext, setCanProceed }: StepTw
 
   // Initialize follow-up files when enabled in settings
   useEffect(() => {
+    console.log("Follow-up effect triggered:", { 
+      enableFollowupQuestions: applicationData?.enableFollowupQuestions, 
+      followupFilesLength: followupFiles.length,
+      applicationData 
+    });
+    
     if (applicationData?.enableFollowupQuestions && followupFiles.length === 0) {
-      // Add one initial follow-up file slot
+      console.log("Adding initial follow-up file slot");
       setFollowupFiles([{
         file: null,
         columns: [],
@@ -86,11 +92,11 @@ export default function StepTwo({ applicationId, onNext, setCanProceed }: StepTw
         },
         isProcessing: false
       }]);
-    } else if (!applicationData?.enableFollowupQuestions) {
-      // Clear follow-up files when disabled
+    } else if (applicationData?.enableFollowupQuestions === false) {
+      console.log("Clearing follow-up files");
       setFollowupFiles([]);
     }
-  }, [applicationData?.enableFollowupQuestions, followupFiles.length]);
+  }, [applicationData?.enableFollowupQuestions]);
 
   // Get columns from uploaded Excel file
   const getColumnsMutation = useMutation({
