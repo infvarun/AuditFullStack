@@ -154,7 +154,7 @@ def get_application(application_id):
         
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         cursor.execute("""
-            SELECT id, COALESCE(audit_name, name) as audit_name, ci_id, 
+            SELECT id, name, audit_name, ci_id, 
                    start_date, end_date, created_at 
             FROM applications 
             WHERE id = %s
@@ -166,6 +166,7 @@ def get_application(application_id):
         
         app_data = {
             'id': row['id'],
+            'name': row['name'],
             'auditName': row['audit_name'],
             'ciId': row['ci_id'],
             'auditDateFrom': row['start_date'],

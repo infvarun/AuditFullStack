@@ -64,9 +64,9 @@ export default function StepOne({ applicationId, setApplicationId, onNext, setCa
       console.log("Populating form with existing application data:", existingApplication);
       form.reset({
         auditName: existingApplication.auditName || "",
-        name: existingApplication.name || "",
-        startDate: existingApplication.startDate || "",
-        endDate: existingApplication.endDate || "",
+        name: existingApplication.name || existingApplication.auditName || "",
+        startDate: (existingApplication as any).auditDateFrom || existingApplication.startDate || "",
+        endDate: (existingApplication as any).auditDateTo || existingApplication.endDate || "",
         ciId: existingApplication.ciId || "",
         settings: {
           enableFollowUpQuestions: (existingApplication.settings as any)?.enableFollowUpQuestions ?? true,
