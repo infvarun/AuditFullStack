@@ -111,14 +111,15 @@ def create_application():
         
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         cursor.execute("""
-            INSERT INTO applications (audit_name, ci_id, start_date, end_date)
-            VALUES (%s, %s, %s, %s)
-            RETURNING id, audit_name, ci_id, start_date, end_date, created_at
+            INSERT INTO applications (name, audit_name, ci_id, start_date, end_date)
+            VALUES (%s, %s, %s, %s, %s)
+            RETURNING id, name, audit_name, ci_id, start_date, end_date, created_at
         """, (
+            data.get('name') or data['auditName'],  # Use name if provided, otherwise auditName
             data['auditName'],
             data['ciId'],
-            data['auditDateFrom'],
-            data['auditDateTo']
+            data.get('startDate') or data.get('auditDateFrom'),
+            data.get('endDate') or data.get('auditDateTo')
         ))
         
         row = cursor.fetchone()
