@@ -1,33 +1,59 @@
-import { exec } from 'child_process';
+import express from 'express';
+import cors from 'cors';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import routes from './routes.js';
+import { createServer } from 'vite';
 
-// Start both React and Flask servers concurrently
-console.log('🚀 Starting React + Flask development servers...');
-console.log('📦 React frontend: http://localhost:5000');
-console.log('🔗 Flask backend: http://localhost:8000');
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-const bothProcess = exec('npx concurrently "npx vite --host 0.0.0.0 --port 5000" "cd server && python simple_flask.py" --names "React,Flask" --prefix-colors "cyan,yellow"', (error, stdout, stderr) => {
-  if (error) {
-    console.error('Server error:', error);
+async function startServer() {
+  const app = express();
+  const PORT = parseInt(process.env.PORT || '5000');
+
+  // Middleware
+  app.use(cors());
+  app.use(express.json());
+  app.use(express.urlencoded({ extended: true }));
+
+  // API routes
+  app.use('/api', routes);
+
+  // Add basic frontend route for development
+  app.get('/', (req, res) => {
+    res.json({
+      message: 'Audit Data Collection Platform API',
+      status: 'PostgreSQL Database Integration Complete',
+      timestamp: new Date().toISOString(),
+      database: 'Connected to Neon PostgreSQL',
+      endpoints: {
+        applications: '/api/applications',
+        health: '/api/health',
+        'data-requests': '/api/data-requests',
+        connectors: '/api/connectors',
+        excel: '/api/excel'
+      }
+    });
+  });
+
+  // Production: Serve static files
+  if (process.env.NODE_ENV === 'production') {
+    app.use(express.static(path.join(__dirname, '../dist/public')));
+    
+    app.get('*', (req, res) => {
+      res.sendFile(path.join(__dirname, '../dist/public/index.html'));
+    });
   }
-  if (stdout) {
-    console.log(stdout);
-  }
-  if (stderr) {
-    console.error(stderr);
-  }
-});
 
-// Handle process termination
-process.on('SIGINT', () => {
-  console.log('🛑 Shutting down servers...');
-  bothProcess.kill();
-  process.exit(0);
-});
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 Server running on http://0.0.0.0:${PORT}`);
+    console.log(`📦 Frontend: ${process.env.NODE_ENV !== 'production' ? 'Vite Dev Server' : 'Static Files'}`);
+    console.log(`🔗 Backend: Express + PostgreSQL`);
+  });
+}
 
-process.on('SIGTERM', () => {
-  console.log('🛑 Shutting down servers...');
-  bothProcess.kill();
-  process.exit(0);
+startServer().catch(err => {
+  console.error('Failed to start server:', err);
+  process.exit(1);
 });
-
-console.log('✅ React + Flask servers starting with concurrently...');
