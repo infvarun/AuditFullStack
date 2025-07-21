@@ -513,38 +513,46 @@ def analyze_questions_with_ai():
         # Use Langchain with OpenAI for intelligent question analysis
         analyses = []
         
-        # Create Langchain prompt template
-        system_template = """You are an expert audit data collection specialist. For each audit question, you need to:
+        # Create Langchain prompt template with better tool selection logic
+        system_template = """You are an expert audit data collection specialist. Analyze each audit question and intelligently determine the most appropriate tool based on the question content and context.
 
-1. Determine the most appropriate tool for data collection
-2. Create a specific prompt for an AI agent to collect the required data
-3. Explain why this tool/connector is needed
+TOOL SELECTION GUIDELINES:
+- sql_server: Database queries, user data, system logs, transactions, authentication records, access controls
+- oracle_db: Enterprise database systems, financial data, ERP systems, large-scale data analysis
+- gnosis: Document searches, policies, procedures, manuals, compliance documents, knowledge base
+- jira: Project tracking, issue management, bug reports, development workflow, change requests  
+- qtest: Quality assurance, test cases, test results, defect tracking, testing documentation
+- service_now: IT service management, incidents, service requests, change management, ITSM processes
 
-Available tools:
-- sql_server: For querying SQL Server databases
-- oracle_db: For querying Oracle databases  
-- gnosis: For searching document repositories
-- jira: For accessing Jira tickets and project data
-- qtest: For test management and quality assurance data
-- service_now: For ITSM and service management data
+ANALYSIS APPROACH:
+1. Read the question carefully and identify key terms
+2. Match question intent with appropriate data source
+3. Create specific, actionable prompts for data collection agents
+4. Provide clear reasoning for tool selection
 
-Respond in JSON format with:
+Examples:
+- "Review user access controls" → sql_server (database security data)
+- "Find compliance policies" → gnosis (document repository)
+- "Check test coverage" → qtest (testing data)
+- "Review incident handling" → service_now (ITSM data)
+
+Respond in JSON format only:
 {{
-  "toolSuggestion": "tool_id",
-  "aiPrompt": "Specific instructions for AI agent data collection",
-  "connectorReason": "Why this tool/connector is appropriate",
-  "category": "Main category of the question",
-  "subcategory": "Specific subcategory"
+  "toolSuggestion": "exact_tool_id_from_list_above",
+  "aiPrompt": "Create comprehensive, actionable instructions for an AI data collection agent. Include specific search criteria, expected data types, analysis requirements, and deliverable format. Make it detailed enough for autonomous execution.",
+  "connectorReason": "Clear explanation why this tool is the best choice for this specific question",
+  "category": "Primary audit category (e.g., Security, Compliance, Process, Quality)",
+  "subcategory": "Specific audit area within the category"
 }}"""
 
-        human_template = """Analyze this audit question:
+        human_template = """Analyze this audit question and select the most appropriate tool:
 
 Question Number: {question_number}
 Process: {process}
 Sub-Process: {sub_process}
 Question: {question}
 
-Determine the best tool for data collection and create an appropriate AI agent prompt."""
+Consider the question content carefully and match it to the most suitable data source from: sql_server, oracle_db, gnosis, jira, qtest, or service_now."""
 
         prompt_template = ChatPromptTemplate.from_messages([
             SystemMessagePromptTemplate.from_template(system_template),
@@ -561,10 +569,59 @@ Determine the best tool for data collection and create an appropriate AI agent p
                     question=question.get('question', '')
                 )
                 
-                # Get AI analysis using Langchain
+                # Get AI analysis using Langchain with JSON parsing
                 response = llm.invoke(formatted_prompt)
                 
-                ai_analysis = json.loads(response.content)
+                # Parse the JSON response with better error handling
+                try:
+                    ai_analysis = json.loads(response.content)
+                    
+                    # Validate that we have a proper tool suggestion
+                    valid_tools = ['sql_server', 'oracle_db', 'gnosis', 'jira', 'qtest', 'service_now']
+                    if ai_analysis.get('toolSuggestion') not in valid_tools:
+                        # If invalid tool, try to map based on question content
+                        question_text = question.get('question', '').lower()
+                        if any(term in question_text for term in ['database', 'user', 'access', 'login', 'authentication']):
+                            ai_analysis['toolSuggestion'] = 'sql_server'
+                        elif any(term in question_text for term in ['document', 'policy', 'procedure', 'manual', 'compliance']):
+                            ai_analysis['toolSuggestion'] = 'gnosis'
+                        elif any(term in question_text for term in ['test', 'quality', 'defect', 'bug', 'qa']):
+                            ai_analysis['toolSuggestion'] = 'qtest'
+                        elif any(term in question_text for term in ['incident', 'service', 'request', 'itsm', 'change']):
+                            ai_analysis['toolSuggestion'] = 'service_now'
+                        elif any(term in question_text for term in ['project', 'issue', 'development', 'workflow']):
+                            ai_analysis['toolSuggestion'] = 'jira'
+                        else:
+                            ai_analysis['toolSuggestion'] = 'sql_server'  # Default fallback
+                            
+                except json.JSONDecodeError as je:
+                    print(f"JSON parsing error for question {question.get('id', '')}: {je}")
+                    print(f"Raw response: {response.content}")
+                    
+                    # Intelligent fallback based on question content
+                    question_text = question.get('question', '').lower()
+                    if any(term in question_text for term in ['database', 'user', 'access', 'login', 'authentication', 'data', 'record']):
+                        tool_suggestion = 'sql_server'
+                    elif any(term in question_text for term in ['document', 'policy', 'procedure', 'manual', 'compliance', 'guideline']):
+                        tool_suggestion = 'gnosis'
+                    elif any(term in question_text for term in ['test', 'quality', 'defect', 'bug', 'qa', 'testing']):
+                        tool_suggestion = 'qtest'
+                    elif any(term in question_text for term in ['incident', 'service', 'request', 'itsm', 'change', 'ticket']):
+                        tool_suggestion = 'service_now'
+                    elif any(term in question_text for term in ['project', 'issue', 'development', 'workflow', 'jira']):
+                        tool_suggestion = 'jira'
+                    elif any(term in question_text for term in ['oracle', 'erp', 'financial', 'enterprise']):
+                        tool_suggestion = 'oracle_db'
+                    else:
+                        tool_suggestion = 'sql_server'
+                        
+                    ai_analysis = {
+                        'category': question.get('process', 'General'),
+                        'subcategory': question.get('subProcess', 'Unknown'),
+                        'toolSuggestion': tool_suggestion,
+                        'aiPrompt': f"Execute comprehensive data collection for audit question: {question.get('question', '')}. Search {tool_suggestion} system for relevant records, analyze data patterns, and compile detailed findings with specific evidence and metrics.",
+                        'connectorReason': f'Selected {tool_suggestion} based on question content analysis'
+                    }
                 
                 analysis = {
                     'questionId': question.get('id', ''),
@@ -587,10 +644,10 @@ Determine the best tool for data collection and create an appropriate AI agent p
                     'originalQuestion': question.get('question', ''),
                     'category': question.get('process', ''),
                     'subcategory': question.get('subProcess', ''),
-                    'aiPrompt': f"Collect data to answer: {question.get('question', '')}",
-                    'toolSuggestion': 'sql_server',
-                    'connectorReason': 'Default suggestion - requires manual review',
-                    'connectorToUse': 'sql_server'
+                    'aiPrompt': f"Execute comprehensive audit data collection: {question.get('question', '')}. Access document repository, search for relevant policies and procedures, extract key findings, and provide detailed compliance assessment.",
+                    'toolSuggestion': 'gnosis',  # Default to document repository for unknown questions
+                    'connectorReason': 'Fallback selection - review question for optimal tool choice',
+                    'connectorToUse': 'gnosis'
                 })
         
         return jsonify({
