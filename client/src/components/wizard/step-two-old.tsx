@@ -53,6 +53,93 @@ export default function StepTwo({ applicationId, onNext, setCanProceed }: StepTw
 
   const { toast } = useToast();
 
+  // Add follow-up file slot
+  const addFollowupFile = () => {
+    setFollowupFiles(prev => [...prev, {
+      file: null,
+      columns: [],
+      sampleData: [],
+      columnMappings: {
+        questionNumber: '',
+        process: '',
+        subProcess: '',
+        question: ''
+      },
+      isProcessing: false
+    }]);
+  };
+
+  // Remove follow-up file slot
+  const removeFollowupFile = (index: number) => {
+    setFollowupFiles(prev => prev.filter((_, i) => i !== index));
+  };
+
+  // Handle file selection
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>, fileType: 'primary' | 'followup', index?: number) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setProcessingFile(fileType);
+    if (fileType === 'followup' && index !== undefined) {
+      setCurrentFileIndex(index);
+    }
+    
+    getColumnsMutation.mutate(file);
+  };
+
+  // Update column mappings
+  const updateColumnMapping = (field: keyof ColumnMapping, value: string, fileType: 'primary' | 'followup', index?: number) => {
+    if (fileType === 'primary') {
+      setPrimaryFile(prev => ({
+        ...prev,
+        columnMappings: {
+          ...prev.columnMappings,
+          [field]: value
+        }
+      }));
+    } else if (fileType === 'followup' && index !== undefined) {
+      setFollowupFiles(prev => {
+        const newFiles = [...prev];
+        newFiles[index] = {
+          ...newFiles[index],
+          columnMappings: {
+            ...newFiles[index].columnMappings,
+            [field]: value
+          }
+        };
+        return newFiles;
+      });
+    }
+  };
+
+  // Handle file processing
+  const handleProcessFile = (fileType: 'primary' | 'followup', index?: number) => {
+    let file, columnMappings;
+    
+    if (fileType === 'primary') {
+      file = primaryFile.file;
+      columnMappings = primaryFile.columnMappings;
+    } else if (fileType === 'followup' && index !== undefined) {
+      file = followupFiles[index].file;
+      columnMappings = followupFiles[index].columnMappings;
+    }
+
+    if (!file) {
+      toast({
+        title: "No file selected",
+        description: "Please select a file first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    processExcelMutation.mutate({
+      file,
+      columnMappings,
+      fileType
+    });
+  };
+
   const { data: dataRequests, isLoading, refetch } = useQuery({
     queryKey: ["/api/data-requests/application", applicationId],
     enabled: !!applicationId,
@@ -99,6 +186,7 @@ export default function StepTwo({ applicationId, onNext, setCanProceed }: StepTw
       formData.append("file", file);
       
       const response = await apiRequest("POST", "/api/excel/get-columns", formData);
+
       return response.json();
     },
     onSuccess: (data, file) => {
@@ -163,7 +251,44 @@ export default function StepTwo({ applicationId, onNext, setCanProceed }: StepTw
     },
   });
 
-  // Helper functions
+  const handleFileSelect = useCallback((event: React.ChangeEvent<HTMLInputElement>, fileType: 'primary' | 'followup', index?: number) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      setProcessingFile(fileType);
+      setCurrentFileIndex(index ?? null);
+      getColumnsMutation.mutate(file);
+    }
+  }, []);
+
+  const handleProcessFile = (fileType: 'primary' | 'followup', index?: number) => {
+    const fileState = fileType === 'primary' ? primaryFile : followupFiles[index!];
+    if (fileState.file) {
+      processExcelMutation.mutate({
+        file: fileState.file,
+        columnMappings: fileState.columnMappings,
+        fileType: fileType
+      });
+    }
+  };
+
+  const updateColumnMapping = (field: keyof ColumnMapping, value: string, fileType: 'primary' | 'followup', index?: number) => {
+    if (fileType === 'primary') {
+      setPrimaryFile(prev => ({
+        ...prev,
+        columnMappings: { ...prev.columnMappings, [field]: value }
+      }));
+    } else if (index !== undefined) {
+      setFollowupFiles(prev => {
+        const newFiles = [...prev];
+        newFiles[index] = {
+          ...newFiles[index],
+          columnMappings: { ...newFiles[index].columnMappings, [field]: value }
+        };
+        return newFiles;
+      });
+    }
+  };
+
   const addFollowupFile = () => {
     setFollowupFiles(prev => [...prev, {
       file: null,
@@ -181,69 +306,6 @@ export default function StepTwo({ applicationId, onNext, setCanProceed }: StepTw
 
   const removeFollowupFile = (index: number) => {
     setFollowupFiles(prev => prev.filter((_, i) => i !== index));
-  };
-
-  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>, fileType: 'primary' | 'followup', index?: number) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    setProcessingFile(fileType);
-    if (fileType === 'followup' && index !== undefined) {
-      setCurrentFileIndex(index);
-    }
-    
-    getColumnsMutation.mutate(file);
-  };
-
-  const updateColumnMapping = (field: keyof ColumnMapping, value: string, fileType: 'primary' | 'followup', index?: number) => {
-    if (fileType === 'primary') {
-      setPrimaryFile(prev => ({
-        ...prev,
-        columnMappings: {
-          ...prev.columnMappings,
-          [field]: value
-        }
-      }));
-    } else if (fileType === 'followup' && index !== undefined) {
-      setFollowupFiles(prev => {
-        const newFiles = [...prev];
-        newFiles[index] = {
-          ...newFiles[index],
-          columnMappings: {
-            ...newFiles[index].columnMappings,
-            [field]: value
-          }
-        };
-        return newFiles;
-      });
-    }
-  };
-
-  const handleProcessFile = (fileType: 'primary' | 'followup', index?: number) => {
-    let file, columnMappings;
-    
-    if (fileType === 'primary') {
-      file = primaryFile.file;
-      columnMappings = primaryFile.columnMappings;
-    } else if (fileType === 'followup' && index !== undefined) {
-      file = followupFiles[index].file;
-      columnMappings = followupFiles[index].columnMappings;
-    }
-
-    if (!file) {
-      toast({
-        title: "No file selected",
-        description: "Please select a file first",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    processExcelMutation.mutate({
-      file,
-      columnMappings,
-      fileType
-    });
   };
 
   // Column mapping component
@@ -422,28 +484,31 @@ export default function StepTwo({ applicationId, onNext, setCanProceed }: StepTw
                       </Badge>
                     </div>
                   </div>
-                  
-                  {/* Summary Cards */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                    <div className="bg-blue-50 rounded-lg p-4">
-                      <div className="flex items-center space-x-3">
-                        <List className="h-5 w-5 text-blue-600" />
-                        <div>
-                          <p className="text-sm font-medium text-slate-900">Total Questions</p>
-                          <p className="text-2xl font-bold text-blue-600">{dataRequest.totalQuestions}</p>
-                        </div>
-                      </div>
+                </div>
+
+                {/* File Analysis */}
+                <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="bg-blue-50 rounded-lg p-4">
+                    <div className="flex items-center">
+                      <List className="h-5 w-5 text-blue-600 mr-2" />
+                      <span className="text-sm font-medium text-blue-900">
+                        Total Questions
+                      </span>
                     </div>
-                    
-                    <div className="bg-purple-50 rounded-lg p-4">
-                      <div className="flex items-center space-x-3">
-                        <Tags className="h-5 w-5 text-purple-600" />
-                        <div>
-                          <p className="text-sm font-medium text-slate-900">Categories</p>
-                          <p className="text-2xl font-bold text-purple-600">{dataRequest.categories?.length || 0}</p>
-                        </div>
-                      </div>
+                    <p className="text-2xl font-bold text-blue-900 mt-2">
+                      {dataRequest.totalQuestions}
+                    </p>
+                  </div>
+                  <div className="bg-green-50 rounded-lg p-4">
+                    <div className="flex items-center">
+                      <Tags className="h-5 w-5 text-green-600 mr-2" />
+                      <span className="text-sm font-medium text-green-900">
+                        Categories
+                      </span>
                     </div>
+                    <p className="text-2xl font-bold text-green-900 mt-2">
+                      {dataRequest.categories?.length || 0}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -453,7 +518,7 @@ export default function StepTwo({ applicationId, onNext, setCanProceed }: StepTw
       )}
 
       {/* Follow-up Question Files - Only show if enabled in settings */}
-      {applicationData?.enableFollowupQuestions && processedFollowupFiles.length > 0 && (
+      {applicationData?.enableFollowupQuestions && (
         <Card className="card-modern">
           <CardHeader>
             <CardTitle className="flex items-center space-x-3">
@@ -465,30 +530,34 @@ export default function StepTwo({ applicationId, onNext, setCanProceed }: StepTw
           </CardHeader>
           
           <CardContent>
-            {processedFollowupFiles.map((dataRequest: any, index: number) => (
-              <div key={index} className="mb-6 last:mb-0">
-                <div className="bg-slate-50 rounded-lg p-4">
-                  <div className="flex items-center space-x-4">
-                    <div className="flex-shrink-0">
-                      <FileSpreadsheet className="h-8 w-8 text-purple-600" />
-                    </div>
-                    <div className="flex-1">
-                      <h4 className="text-sm font-medium text-slate-900">
-                        {dataRequest.fileName}
-                      </h4>
-                      <p className="text-xs text-slate-500">
-                        {(dataRequest.fileSize / 1024 / 1024).toFixed(1)} MB • {dataRequest.totalQuestions} questions • {dataRequest.categories?.length || 0} categories
-                      </p>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <Badge variant="secondary" className="bg-purple-100 text-purple-800">
-                        Follow-up
-                      </Badge>
+            {processedFollowupFiles.length > 0 ? (
+              processedFollowupFiles.map((dataRequest: any, index: number) => (
+                <div key={index} className="mb-6 last:mb-0">
+                  <div className="bg-slate-50 rounded-lg p-4">
+                    <div className="flex items-center space-x-4">
+                      <div className="flex-shrink-0">
+                        <FileSpreadsheet className="h-8 w-8 text-purple-600" />
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="text-sm font-medium text-slate-900">
+                          {dataRequest.fileName}
+                        </h4>
+                        <p className="text-xs text-slate-500">
+                          {(dataRequest.fileSize / 1024 / 1024).toFixed(1)} MB • {dataRequest.totalQuestions} questions • {dataRequest.categories?.length || 0} categories
+                        </p>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <Badge variant="secondary" className="bg-purple-100 text-purple-800">
+                          Follow-up
+                        </Badge>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              ))
+            ) : (
+              <p className="text-slate-500 text-center py-8">No follow-up files uploaded yet</p>
+            )}
           </CardContent>
         </Card>
       )}
