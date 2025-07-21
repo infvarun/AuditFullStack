@@ -85,22 +85,11 @@ export default function Settings() {
   // Get all unique CI IDs
   const { data: applications } = useQuery({
     queryKey: ["/api/applications"],
-    queryFn: async () => {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://0.0.0.0:8000'}/api/applications`);
-      if (!response.ok) throw new Error("Failed to fetch applications");
-      return response.json();
-    },
   });
 
   // Get connectors for selected CI
   const { data: connectors, refetch: refetchConnectors } = useQuery({
     queryKey: ["/api/connectors/ci", selectedCi],
-    queryFn: async () => {
-      if (!selectedCi) return [];
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://0.0.0.0:8000'}/api/connectors/ci/${selectedCi}`);
-      if (!response.ok) throw new Error("Failed to fetch connectors");
-      return response.json();
-    },
     enabled: !!selectedCi,
   });
 
@@ -108,7 +97,7 @@ export default function Settings() {
   const { data: dbHealth, isLoading: dbHealthLoading, refetch: refetchDbHealth } = useQuery({
     queryKey: ["/api/database/health"],
     queryFn: async () => {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://0.0.0.0:8000'}/api/database/health`);
+      const response = await apiRequest("GET", "/api/database/health");
       const data = await response.json();
       return { ...data, httpStatus: response.status };
     },
@@ -166,7 +155,7 @@ export default function Settings() {
   });
 
   // Get unique CI IDs from applications
-  const uniqueCiIds = applications?.map((app: any) => app.ciId).filter((value: string, index: number, self: string[]) => self.indexOf(value) === index) || [];
+  const uniqueCiIds = (applications as any[])?.map((app: any) => app.ciId).filter((value: string, index: number, self: string[]) => self.indexOf(value) === index) || [];
   const filteredCiIds = uniqueCiIds.filter((ciId: string) => ciId.toLowerCase().includes(searchTerm.toLowerCase()));
 
   const handleCreateConnector = () => {
@@ -232,7 +221,7 @@ export default function Settings() {
                 >
                   <div className="font-medium">{ciId}</div>
                   <div className="text-sm text-slate-500">
-                    {applications?.filter((app: any) => app.ciId === ciId).length} applications
+                    {(applications as any[])?.filter((app: any) => app.ciId === ciId).length || 0} applications
                   </div>
                 </div>
               ))}
@@ -269,8 +258,8 @@ export default function Settings() {
               </div>
             ) : (
               <div className="space-y-4">
-                {connectors?.length > 0 ? (
-                  connectors.map((connector: any) => {
+                {(connectors as any[])?.length > 0 ? (
+                  (connectors as any[]).map((connector: any) => {
                     const config = connectorConfigs.find(c => c.type === connector.connectorType);
                     return (
                       <div key={connector.id} className="border rounded-lg p-4">
