@@ -308,8 +308,9 @@ def get_excel_columns():
             df = pd.read_excel(file_path, nrows=5)  # Read first 5 rows
             columns = df.columns.tolist()
             
-            # Convert to records for sample data
-            sample_data = df.head(3).to_dict('records')
+            # Convert to records for sample data, handling NaN values
+            sample_df = df.head(3).fillna('')  # Replace NaN with empty string
+            sample_data = sample_df.to_dict('records')
             
             return jsonify({
                 'columns': columns,
@@ -368,19 +369,25 @@ def process_excel():
             subcategories = set()
             
             for index, row in df.iterrows():
+                # Helper function to safely convert values to string, handling NaN
+                def safe_str(value, default=''):
+                    if pd.isna(value) or value is None:
+                        return default
+                    return str(value)
+                
                 question_data = {
                     'id': f"Q{index + 1}",
-                    'questionNumber': str(row.get(column_mappings.get('questionNumber', ''), f"Q{index + 1}")),
-                    'process': str(row.get(column_mappings.get('process', ''), '')),
-                    'subProcess': str(row.get(column_mappings.get('subProcess', ''), '')),
-                    'question': str(row.get(column_mappings.get('question', ''), ''))
+                    'questionNumber': safe_str(row.get(column_mappings.get('questionNumber', ''), f"Q{index + 1}")),
+                    'process': safe_str(row.get(column_mappings.get('process', ''), '')),
+                    'subProcess': safe_str(row.get(column_mappings.get('subProcess', ''), '')),
+                    'question': safe_str(row.get(column_mappings.get('question', ''), ''))
                 }
                 questions.append(question_data)
                 
                 # Collect categories and subcategories
-                if question_data['process']:
+                if question_data['process'] and question_data['process'] != '':
                     categories.add(question_data['process'])
-                if question_data['subProcess']:
+                if question_data['subProcess'] and question_data['subProcess'] != '':
                     subcategories.add(question_data['subProcess'])
             
             # Save to database
