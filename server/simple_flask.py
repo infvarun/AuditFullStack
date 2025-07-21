@@ -20,7 +20,12 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = Flask(__name__)
-CORS(app, origins=["http://localhost:5000", "http://0.0.0.0:5000"])
+CORS(app, origins=[
+    "http://localhost:5000", 
+    "http://0.0.0.0:5000",
+    "https://7148f2c9-02b0-4430-8db4-b17d1ed51f18-00-1f4bz4pbor6xh.riker.replit.dev",
+    "http://7148f2c9-02b0-4430-8db4-b17d1ed51f18-00-1f4bz4pbor6xh.riker.replit.dev"
+], supports_credentials=True)
 
 # Configuration
 UPLOAD_FOLDER = 'uploads'
