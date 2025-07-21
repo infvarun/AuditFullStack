@@ -255,3 +255,6 @@ The application follows a pure separation architecture with React frontend and P
 - **✓ Built comprehensive Step 4 UI** with progress tracking, status monitoring, and result display
 - **✓ Added connector availability validation** preventing execution without proper connector configuration
 - **✓ Integrated real-time progress updates** and detailed execution results with error handling
+- **✓ Migrated from direct OpenAI to Langchain** for better AI integration and prompt management
+- **✓ Updated all LLM interactions to use Langchain ChatOpenAI** with structured prompt templates
+- **✓ Added Langchain prompt templates** for consistent AI interaction patterns across the application

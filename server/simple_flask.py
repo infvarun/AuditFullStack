@@ -15,9 +15,20 @@ from psycopg2.extras import RealDictCursor
 from datetime import datetime
 import traceback
 from dotenv import load_dotenv
+from langchain_openai import ChatOpenAI
+from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_core.prompts import ChatPromptTemplate, SystemMessagePromptTemplate, HumanMessagePromptTemplate
 
 # Load environment variables
 load_dotenv()
+
+# Initialize Langchain OpenAI
+llm = ChatOpenAI(
+    model="gpt-4o",  # the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
+    api_key=os.getenv('OPENAI_API_KEY'),
+    temperature=0.1,
+    max_tokens=2000
+)
 
 app = Flask(__name__)
 CORS(app, origins=[
@@ -499,15 +510,11 @@ def analyze_questions_with_ai():
         if not application_id or not questions:
             return jsonify({'error': 'Application ID and questions are required'}), 400
         
-        from openai import OpenAI
-        client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
-        
+        # Use Langchain with OpenAI for intelligent question analysis
         analyses = []
         
-        for question in questions:
-            try:
-                # Create AI prompt for analysis
-                system_prompt = """You are an expert audit data collection specialist. For each audit question, you need to:
+        # Create Langchain prompt template
+        system_template = """You are an expert audit data collection specialist. For each audit question, you need to:
 
 1. Determine the most appropriate tool for data collection
 2. Create a specific prompt for an AI agent to collect the required data
@@ -522,33 +529,42 @@ Available tools:
 - service_now: For ITSM and service management data
 
 Respond in JSON format with:
-{
+{{
   "toolSuggestion": "tool_id",
   "aiPrompt": "Specific instructions for AI agent data collection",
   "connectorReason": "Why this tool/connector is appropriate",
   "category": "Main category of the question",
   "subcategory": "Specific subcategory"
-}"""
+}}"""
 
-                user_prompt = f"""Analyze this audit question:
+        human_template = """Analyze this audit question:
 
-Question Number: {question.get('questionNumber', '')}
-Process: {question.get('process', '')}
-Sub-Process: {question.get('subProcess', '')}
-Question: {question.get('question', '')}
+Question Number: {question_number}
+Process: {process}
+Sub-Process: {sub_process}
+Question: {question}
 
 Determine the best tool for data collection and create an appropriate AI agent prompt."""
 
-                response = client.chat.completions.create(
-                    model="gpt-4o",  # the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt}
-                    ],
-                    response_format={"type": "json_object"}
+        prompt_template = ChatPromptTemplate.from_messages([
+            SystemMessagePromptTemplate.from_template(system_template),
+            HumanMessagePromptTemplate.from_template(human_template)
+        ])
+        
+        for question in questions:
+            try:
+                # Generate prompt for this specific question
+                formatted_prompt = prompt_template.format_messages(
+                    question_number=question.get('questionNumber', ''),
+                    process=question.get('process', ''),
+                    sub_process=question.get('subProcess', ''),
+                    question=question.get('question', '')
                 )
                 
-                ai_analysis = json.loads(response.choices[0].message.content)
+                # Get AI analysis using Langchain
+                response = llm.invoke(formatted_prompt)
+                
+                ai_analysis = json.loads(response.content)
                 
                 analysis = {
                     'questionId': question.get('id', ''),
@@ -823,9 +839,6 @@ def execute_agent():
         if not all([application_id, question_id, prompt, tool_type, connector_id]):
             return jsonify({'error': 'Missing required parameters'}), 400
         
-        from openai import OpenAI
-        client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
-        
         # Get connector details
         conn = get_db_connection()
         if not conn:
@@ -841,17 +854,17 @@ def execute_agent():
         if not connector:
             return jsonify({'error': 'Connector not found'}), 404
         
-        # Create AI agent prompt based on tool type
-        system_prompt = f"""You are an expert data collection agent specializing in {tool_type}. 
+        # Create Langchain prompt template for agent execution
+        system_template = """You are an expert data collection agent specializing in {tool_type}. 
 Your task is to collect specific audit data based on the given prompt.
 
-Connector: {connector['name']} ({connector['type']})
-Configuration: {connector['config'] if connector['config'] else 'Default configuration'}
+Connector: {connector_name} ({connector_type})
+Configuration: {connector_config}
 
 Provide a detailed response about what data would be collected, how it would be queried/accessed, 
 and what the expected results would look like. Format your response as a structured data collection report."""
 
-        user_prompt = f"""Execute the following data collection task:
+        human_template = """Execute the following data collection task:
 
 {prompt}
 
@@ -862,15 +875,23 @@ Please provide:
 4. Number of records or data points expected
 5. Any potential challenges or limitations"""
 
-        response = client.chat.completions.create(
-            model="gpt-4o",  # the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ]
+        # Create and format the prompt
+        agent_prompt = ChatPromptTemplate.from_messages([
+            SystemMessagePromptTemplate.from_template(system_template),
+            HumanMessagePromptTemplate.from_template(human_template)
+        ])
+        
+        formatted_messages = agent_prompt.format_messages(
+            tool_type=tool_type,
+            connector_name=connector['name'],
+            connector_type=connector['type'],
+            connector_config=connector['config'] if connector['config'] else 'Default configuration',
+            prompt=prompt
         )
         
-        ai_response = response.choices[0].message.content
+        # Execute using Langchain
+        response = llm.invoke(formatted_messages)
+        ai_response = response.content
         
         # Store execution result in database
         cursor.execute("""
