@@ -440,6 +440,157 @@ def process_excel():
             'error': f'Error processing Excel file: {str(e)}'
         }), 500
 
+# Question analysis API endpoints
+@app.route('/api/questions/analyses/<int:application_id>', methods=['GET'])
+def get_question_analyses(application_id):
+    """Get saved question analyses for application"""
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'error': 'Database connection failed'}), 500
+        
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute("""
+            SELECT question_id, original_question, category, subcategory,
+                   ai_prompt, tool_suggestion, connector_reason, connector_to_use
+            FROM question_analyses 
+            WHERE application_id = %s
+            ORDER BY question_id
+        """, (application_id,))
+        
+        analyses = []
+        for row in cursor.fetchall():
+            analysis_data = {
+                'id': row['question_id'],
+                'originalQuestion': row['original_question'],
+                'category': row['category'],
+                'subcategory': row['subcategory'],
+                'prompt': row['ai_prompt'],
+                'toolSuggestion': row['tool_suggestion'],
+                'connectorReason': row['connector_reason'],
+                'connectorToUse': row['connector_to_use']
+            }
+            analyses.append(analysis_data)
+        
+        return jsonify(analyses), 200
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if conn:
+            cursor.close()
+            conn.close()
+
+@app.route('/api/questions/analyze', methods=['POST'])
+def analyze_questions():
+    """Analyze questions with AI (mock implementation)"""
+    try:
+        data = request.get_json()
+        application_id = data.get('applicationId')
+        
+        if not application_id:
+            return jsonify({'error': 'Application ID is required'}), 400
+        
+        # Get questions from data_requests table
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'error': 'Database connection failed'}), 500
+        
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute("""
+            SELECT questions FROM data_requests 
+            WHERE application_id = %s AND file_type = 'primary'
+            ORDER BY uploaded_at DESC LIMIT 1
+        """, (application_id,))
+        
+        result = cursor.fetchone()
+        if not result:
+            return jsonify({'error': 'No questions found for this application'}), 404
+        
+        questions = result['questions']
+        if isinstance(questions, str):
+            questions = json.loads(questions)
+        
+        # Mock AI analysis - in real implementation, this would use OpenAI
+        analyzed_questions = []
+        for q in questions:
+            analyzed_q = {
+                'id': q.get('id', ''),
+                'originalQuestion': q.get('question', ''),
+                'category': q.get('process', 'General'),
+                'subcategory': q.get('subProcess', ''),
+                'prompt': f"Analyze the following audit question and provide detailed guidance: {q.get('question', '')}",
+                'toolSuggestion': 'sql_server',  # Default suggestion
+                'connectorReason': 'This question requires database analysis to verify compliance.',
+                'connectorToUse': 'sql_server'
+            }
+            analyzed_questions.append(analyzed_q)
+        
+        return jsonify({
+            'questions': analyzed_questions,
+            'totalQuestions': len(analyzed_questions)
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if conn:
+            cursor.close()
+            conn.close()
+
+@app.route('/api/questions/analyses/save', methods=['POST'])
+def save_question_analyses():
+    """Save question analyses to database"""
+    try:
+        data = request.get_json()
+        application_id = data.get('applicationId')
+        analyses = data.get('analyses', [])
+        
+        if not application_id:
+            return jsonify({'error': 'Application ID is required'}), 400
+        
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'error': 'Database connection failed'}), 500
+        
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Delete existing analyses for this application
+        cursor.execute("DELETE FROM question_analyses WHERE application_id = %s", (application_id,))
+        
+        # Insert new analyses
+        for analysis in analyses:
+            cursor.execute("""
+                INSERT INTO question_analyses 
+                (application_id, question_id, original_question, category, subcategory,
+                 ai_prompt, tool_suggestion, connector_reason, connector_to_use)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (
+                application_id,
+                analysis.get('id', ''),
+                analysis.get('originalQuestion', ''),
+                analysis.get('category', ''),
+                analysis.get('subcategory', ''),
+                analysis.get('prompt', ''),
+                analysis.get('toolSuggestion', ''),
+                analysis.get('connectorReason', ''),
+                analysis.get('connectorToUse', '')
+            ))
+        
+        conn.commit()
+        
+        return jsonify({
+            'message': 'Analyses saved successfully',
+            'count': len(analyses)
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if conn:
+            cursor.close()
+            conn.close()
+
 # Health check
 @app.route('/health', methods=['GET'])
 def health_check():
