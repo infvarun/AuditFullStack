@@ -20,13 +20,12 @@ Preferred communication style: Simple, everyday language.
 - **Form Management**: React Hook Form with Zod validation
 
 ### Backend Architecture
-- **Framework**: Python FastAPI with async/await patterns
-- **Database**: PostgreSQL with SQLAlchemy ORM
+- **Framework**: Python Flask with Flask-CORS for clean API development
+- **Database**: PostgreSQL with psycopg2 direct connection
 - **Database Provider**: Neon Database (serverless PostgreSQL)
-- **AI Integration**: LangChain with OpenAI GPT-4o for question analysis
-- **API**: RESTful API with JSON responses
-- **Development**: Uvicorn server with hot reload support
-- **CORS**: Direct CORS configuration for React frontend communication
+- **API**: RESTful JSON API with comprehensive Excel processing
+- **Development**: Flask development server with debug mode and hot reload
+- **CORS**: Flask-CORS middleware for seamless React frontend communication
 
 ## Key Components
 
@@ -80,25 +79,25 @@ Preferred communication style: Simple, everyday language.
 ## Deployment Strategy
 
 ### Development
-- **Frontend**: Vite dev server with HMR on port 5173
-- **Backend**: Python FastAPI with Uvicorn and hot reload on port 5000
-- **Database**: Neon PostgreSQL with connection pooling
-- **Build**: Vite for frontend, Python for backend execution
-- **Communication**: Direct API calls with CORS configuration
+- **Frontend**: Vite dev server with HMR on port 5000
+- **Backend**: Python Flask with debug mode and hot reload on port 8000
+- **Database**: Neon PostgreSQL with direct psycopg2 connections
+- **Build**: Vite for frontend, Python Flask for backend execution
+- **Communication**: Direct API calls with Flask-CORS configuration
 
 ### Production
-- **Frontend**: Static files built with Vite and served by Python FastAPI
-- **Backend**: Python FastAPI with Uvicorn for production deployment
-- **Database**: SQLAlchemy models with direct PostgreSQL connection
-- **Environment**: DATABASE_URL and OPENAI_API_KEY required
+- **Frontend**: Static files built with Vite
+- **Backend**: Python Flask for production deployment
+- **Database**: Direct PostgreSQL connection via psycopg2
+- **Environment**: DATABASE_URL required for database connectivity
 
 ### Build Process
-- Frontend assets built to `dist/public`
-- Python backend runs directly via start_python_backend.py
-- Database schema created via SQLAlchemy metadata
-- Static file serving integrated with Node.js proxy
+- Frontend assets built via Vite to `dist/public`
+- Python Flask backend runs directly via `server/app.py`
+- Database schema managed through direct SQL operations
+- Clean separation with no proxy layer required
 
-The application follows a clean separation architecture with React frontend and Python backend communicating directly via CORS-enabled API calls. The frontend uses TypeScript for type safety while the backend uses Pydantic models for data validation, maintaining clear separation between frontend and backend concerns.
+The application follows a pure separation architecture with React frontend and Python Flask backend communicating directly via Flask-CORS enabled API calls. The frontend uses TypeScript for type safety while the backend uses native Python types and JSON serialization, maintaining complete separation between frontend and backend concerns.
 
 ## Recent Changes: Latest modifications with dates
 
@@ -228,3 +227,15 @@ The application follows a clean separation architecture with React frontend and 
 - **✓ Verified database connectivity and initialization** ensuring proper PostgreSQL connection
 - **✓ Implemented proper process management** with graceful shutdown handling for both servers
 - **✓ Confirmed application accessibility** on Replit platform with working frontend and backend communication
+
+### July 21, 2025 - Clean Architecture Migration to React + Flask
+- **✓ Eliminated Express.js complexity** replacing hybrid Node.js/Python setup with clean separation
+- **✓ Created pure Python Flask backend** with Flask-CORS for seamless React communication
+- **✓ Simplified server architecture** removing unnecessary Node.js proxy layer
+- **✓ Updated React frontend API client** to communicate directly with Flask backend on port 8000
+- **✓ Configured independent server scripts** for React (port 5000) and Flask (port 8000) development
+- **✓ Added concurrently support** for running both servers simultaneously during development
+- **✓ Created comprehensive Flask API** with applications, Excel processing, and health check endpoints
+- **✓ Implemented direct PostgreSQL connections** using psycopg2 for better performance
+- **✓ Updated architecture documentation** to reflect clean React + Flask separation
+- **✓ Verified successful deployment** with both servers running independently and communicating properly

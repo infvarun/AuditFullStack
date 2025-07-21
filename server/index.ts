@@ -1,53 +1,33 @@
 import { exec } from 'child_process';
-import { promisify } from 'util';
 
-const execAsync = promisify(exec);
+// Start both React and Flask servers concurrently
+console.log('🚀 Starting React + Flask development servers...');
+console.log('📦 React frontend: http://localhost:5000');
+console.log('🔗 Flask backend: http://localhost:8000');
 
-// Start Vite dev server for React frontend
-console.log('🚀 Starting React development server...');
-const viteProcess = exec('npx vite --host 0.0.0.0 --port 5000', {
-  env: {
-    ...process.env,
-    VITE_HMR_HOST: '0.0.0.0',
-    VITE_HMR_PORT: '5000'
-  }
-}, (error, stdout, stderr) => {
+const bothProcess = exec('npx concurrently "npx vite --host 0.0.0.0 --port 5000" "cd server && python app.py" --names "React,Flask" --prefix-colors "cyan,yellow"', (error, stdout, stderr) => {
   if (error) {
-    console.error('Vite error:', error);
+    console.error('Server error:', error);
   }
-  console.log('Vite output:', stdout);
+  if (stdout) {
+    console.log(stdout);
+  }
   if (stderr) {
-    console.error('Vite stderr:', stderr);
-  }
-});
-
-// Start Python backend
-console.log('🐍 Starting Python FastAPI backend...');
-const pythonProcess = exec('cd server && python main.py', (error, stdout, stderr) => {
-  if (error) {
-    console.error('Python error:', error);
-  }
-  console.log('Python output:', stdout);
-  if (stderr) {
-    console.error('Python stderr:', stderr);
+    console.error(stderr);
   }
 });
 
 // Handle process termination
 process.on('SIGINT', () => {
   console.log('🛑 Shutting down servers...');
-  viteProcess.kill();
-  pythonProcess.kill();
+  bothProcess.kill();
   process.exit(0);
 });
 
 process.on('SIGTERM', () => {
   console.log('🛑 Shutting down servers...');
-  viteProcess.kill();
-  pythonProcess.kill();
+  bothProcess.kill();
   process.exit(0);
 });
 
-console.log('✅ Both servers starting...');
-console.log('📦 React frontend: http://localhost:5000');
-console.log('🔗 Python backend: http://localhost:8000');
+console.log('✅ React + Flask servers starting with concurrently...');
