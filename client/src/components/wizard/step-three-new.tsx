@@ -151,7 +151,8 @@ export default function StepThree({ applicationId, onNext, setCanProceed }: Step
   // Save analyses mutation
   const saveAnalysesMutation = useMutation({
     mutationFn: async (analyses: QuestionAnalysis[]) => {
-      const response = await apiRequest("POST", `/api/questions/analyses/${applicationId}/save`, {
+      const response = await apiRequest("POST", "/api/questions/analyses/save", {
+        applicationId: applicationId,
         analyses: analyses
       });
       return response.json();
@@ -352,8 +353,11 @@ export default function StepThree({ applicationId, onNext, setCanProceed }: Step
                 const connectorStatus = getConnectorStatus(analysis.toolSuggestion);
                 const ToolIcon = getToolIcon(analysis.toolSuggestion);
                 
+                // Create unique key using multiple fields
+                const uniqueKey = `analysis-${applicationId}-${index}-${analysis.questionId || index}-${analysis.originalQuestion?.slice(0, 20) || ''}`;
+                
                 return (
-                  <div key={analysis.questionId} className="border border-slate-200 rounded-lg p-4">
+                  <div key={uniqueKey} className="border border-slate-200 rounded-lg p-4">
                     <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
                       {/* Question ID */}
                       <div>
@@ -361,7 +365,7 @@ export default function StepThree({ applicationId, onNext, setCanProceed }: Step
                           Question ID
                         </label>
                         <p className="mt-1 font-mono text-sm text-slate-900">
-                          {analysis.questionId}
+                          {analysis.questionId || `Q${index + 1}`}
                         </p>
                       </div>
                       
