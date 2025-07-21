@@ -808,6 +808,147 @@ def test_endpoint():
         'database_available': get_db_connection() is not None
     }), 200
 
+# AI Agent Execution API
+@app.route('/api/agents/execute', methods=['POST'])
+def execute_agent():
+    """Execute AI agent for data collection"""
+    try:
+        data = request.get_json()
+        application_id = data.get('applicationId')
+        question_id = data.get('questionId')
+        prompt = data.get('prompt')
+        tool_type = data.get('toolType')
+        connector_id = data.get('connectorId')
+        
+        if not all([application_id, question_id, prompt, tool_type, connector_id]):
+            return jsonify({'error': 'Missing required parameters'}), 400
+        
+        from openai import OpenAI
+        client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+        
+        # Get connector details
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'error': 'Database connection failed'}), 500
+        
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute("""
+            SELECT name, type, config FROM tool_connectors 
+            WHERE id = %s
+        """, (connector_id,))
+        
+        connector = cursor.fetchone()
+        if not connector:
+            return jsonify({'error': 'Connector not found'}), 404
+        
+        # Create AI agent prompt based on tool type
+        system_prompt = f"""You are an expert data collection agent specializing in {tool_type}. 
+Your task is to collect specific audit data based on the given prompt.
+
+Connector: {connector['name']} ({connector['type']})
+Configuration: {connector['config'] if connector['config'] else 'Default configuration'}
+
+Provide a detailed response about what data would be collected, how it would be queried/accessed, 
+and what the expected results would look like. Format your response as a structured data collection report."""
+
+        user_prompt = f"""Execute the following data collection task:
+
+{prompt}
+
+Please provide:
+1. Data collection method and approach
+2. Expected data sources and queries/searches
+3. Sample of what the collected data would contain
+4. Number of records or data points expected
+5. Any potential challenges or limitations"""
+
+        response = client.chat.completions.create(
+            model="gpt-4o",  # the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ]
+        )
+        
+        ai_response = response.choices[0].message.content
+        
+        # Store execution result in database
+        cursor.execute("""
+            INSERT INTO agent_executions 
+            (application_id, question_id, tool_type, connector_id, prompt, result, status, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, NOW())
+        """, (
+            application_id,
+            question_id,
+            tool_type,
+            connector_id,
+            prompt,
+            ai_response,
+            'completed'
+        ))
+        
+        conn.commit()
+        
+        return jsonify({
+            'status': 'completed',
+            'result': {
+                'data': ai_response,
+                'connector': connector['name'],
+                'tool_type': tool_type,
+                'records': 'Varies based on query',
+                'timestamp': datetime.now().isoformat()
+            }
+        }), 200
+        
+    except Exception as e:
+        print(f"Error in execute_agent: {e}")
+        return jsonify({'error': f'Agent execution failed: {str(e)}'}), 500
+    finally:
+        if conn:
+            cursor.close()
+            conn.close()
+
+# Get agent execution results
+@app.route('/api/agents/executions/<int:application_id>', methods=['GET'])
+def get_agent_executions(application_id):
+    """Get all agent execution results for an application"""
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'error': 'Database connection failed'}), 500
+        
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute("""
+            SELECT ae.*, tc.name as connector_name
+            FROM agent_executions ae
+            LEFT JOIN tool_connectors tc ON ae.connector_id = tc.id
+            WHERE ae.application_id = %s
+            ORDER BY ae.created_at DESC
+        """, (application_id,))
+        
+        executions = []
+        for row in cursor.fetchall():
+            execution_data = {
+                'id': row['id'],
+                'questionId': row['question_id'],
+                'toolType': row['tool_type'],
+                'connectorName': row['connector_name'],
+                'prompt': row['prompt'],
+                'result': row['result'],
+                'status': row['status'],
+                'createdAt': row['created_at']
+            }
+            executions.append(execution_data)
+        
+        return jsonify(executions), 200
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if conn:
+            cursor.close()
+            conn.close()
+
 if __name__ == '__main__':
     print("🐍 Starting Simple Flask API server...")
     print("📡 CORS enabled for React frontend at http://localhost:5000")

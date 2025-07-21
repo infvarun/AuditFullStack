@@ -1,0 +1,497 @@
+import { useState, useEffect } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { Play, CheckCircle, AlertTriangle, Clock, Database, FileText, Bug, TestTube, Wrench, Bot, RefreshCw } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
+import { Button } from "../ui/button";
+import { Badge } from "../ui/badge";
+import { Progress } from "../ui/progress";
+import { Alert, AlertDescription } from "../ui/alert";
+import { Separator } from "../ui/separator";
+import { apiRequest } from "../../lib/queryClient";
+import { useToast } from "../../hooks/use-toast";
+
+interface StepFourProps {
+  applicationId: number | null;
+  onNext: () => void;
+  setCanProceed: (canProceed: boolean) => void;
+}
+
+interface QuestionAnalysis {
+  questionId: string;
+  originalQuestion: string;
+  category: string;
+  subcategory: string;
+  aiPrompt: string;
+  toolSuggestion: string;
+  connectorReason: string;
+  connectorToUse: string;
+}
+
+interface ToolConnector {
+  id: number;
+  name: string;
+  type: string;
+  ciId: string;
+  config: any;
+}
+
+interface AgentExecution {
+  questionId: string;
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'no_connector';
+  result?: any;
+  error?: string;
+  progress?: number;
+  startTime?: Date;
+  endTime?: Date;
+}
+
+const TOOL_ICONS = {
+  sql_server: Database,
+  oracle_db: Database,
+  gnosis: FileText,
+  jira: Bug,
+  qtest: TestTube,
+  service_now: Wrench,
+};
+
+const TOOL_NAMES = {
+  sql_server: 'SQL Server DB',
+  oracle_db: 'Oracle DB',
+  gnosis: 'Gnosis Document Repository',
+  jira: 'Jira',
+  qtest: 'QTest',
+  service_now: 'Service Now',
+};
+
+export default function StepFour({ applicationId, onNext, setCanProceed }: StepFourProps) {
+  const [executions, setExecutions] = useState<Record<string, AgentExecution>>({});
+  const [isExecuting, setIsExecuting] = useState(false);
+  const [overallProgress, setOverallProgress] = useState(0);
+
+  const { toast } = useToast();
+
+  // Get application data
+  const { data: applicationData } = useQuery({
+    queryKey: [`/api/applications/${applicationId}`],
+    enabled: !!applicationId,
+  });
+
+  // Get question analyses from Step 3
+  const { data: analyses = [], isLoading: isLoadingAnalyses } = useQuery<QuestionAnalysis[]>({
+    queryKey: [`/api/questions/analyses/${applicationId}`],
+    enabled: !!applicationId,
+  });
+
+  // Get available connectors for this CI
+  const { data: connectors = [] } = useQuery<ToolConnector[]>({
+    queryKey: [`/api/connectors/ci/${applicationData?.ciId}`],
+    enabled: !!applicationData?.ciId,
+  });
+
+  // Agent execution mutation
+  const executeAgentMutation = useMutation({
+    mutationFn: async ({ questionId, prompt, toolType, connectorId }: {
+      questionId: string;
+      prompt: string;
+      toolType: string;
+      connectorId: number;
+    }) => {
+      const response = await apiRequest("POST", "/api/agents/execute", {
+        applicationId,
+        questionId,
+        prompt,
+        toolType,
+        connectorId
+      });
+      return response.json();
+    },
+  });
+
+  // Initialize executions when analyses are loaded
+  useEffect(() => {
+    if (analyses.length > 0) {
+      const initialExecutions: Record<string, AgentExecution> = {};
+      
+      analyses.forEach(analysis => {
+        const connector = connectors.find(c => c.type === analysis.toolSuggestion);
+        
+        initialExecutions[analysis.questionId] = {
+          questionId: analysis.questionId,
+          status: connector ? 'pending' : 'no_connector',
+          progress: 0
+        };
+      });
+      
+      setExecutions(initialExecutions);
+    }
+  }, [analyses, connectors]);
+
+  // Check if we can proceed (all executions completed)
+  useEffect(() => {
+    const executionList = Object.values(executions);
+    const completedCount = executionList.filter(e => e.status === 'completed').length;
+    const canProceed = executionList.length > 0 && completedCount === executionList.length;
+    setCanProceed(canProceed);
+  }, [executions, setCanProceed]);
+
+  const getConnectorForTool = (toolType: string) => {
+    return connectors.find(c => c.type === toolType);
+  };
+
+  const executeAllAgents = async () => {
+    setIsExecuting(true);
+    const totalQuestions = analyses.length;
+    let completedQuestions = 0;
+
+    for (const analysis of analyses) {
+      const connector = getConnectorForTool(analysis.toolSuggestion);
+      
+      if (!connector) {
+        setExecutions(prev => ({
+          ...prev,
+          [analysis.questionId]: {
+            ...prev[analysis.questionId],
+            status: 'no_connector',
+            error: 'No connector configured for this tool type'
+          }
+        }));
+        completedQuestions++;
+        setOverallProgress((completedQuestions / totalQuestions) * 100);
+        continue;
+      }
+
+      // Update status to running
+      setExecutions(prev => ({
+        ...prev,
+        [analysis.questionId]: {
+          ...prev[analysis.questionId],
+          status: 'running',
+          startTime: new Date(),
+          progress: 0
+        }
+      }));
+
+      try {
+        // Simulate progress updates
+        const progressInterval = setInterval(() => {
+          setExecutions(prev => ({
+            ...prev,
+            [analysis.questionId]: {
+              ...prev[analysis.questionId],
+              progress: Math.min((prev[analysis.questionId].progress || 0) + 20, 90)
+            }
+          }));
+        }, 500);
+
+        // Execute the agent (mock implementation for now)
+        await new Promise(resolve => setTimeout(resolve, 2500)); // Simulate agent execution time
+        
+        clearInterval(progressInterval);
+
+        // Mock result based on tool type
+        const mockResult = {
+          data: `Data collected from ${TOOL_NAMES[analysis.toolSuggestion as keyof typeof TOOL_NAMES]} for question: ${analysis.originalQuestion}`,
+          records: Math.floor(Math.random() * 100) + 1,
+          source: connector.name,
+          timestamp: new Date().toISOString()
+        };
+
+        setExecutions(prev => ({
+          ...prev,
+          [analysis.questionId]: {
+            ...prev[analysis.questionId],
+            status: 'completed',
+            progress: 100,
+            endTime: new Date(),
+            result: mockResult
+          }
+        }));
+
+      } catch (error) {
+        setExecutions(prev => ({
+          ...prev,
+          [analysis.questionId]: {
+            ...prev[analysis.questionId],
+            status: 'failed',
+            error: error instanceof Error ? error.message : 'Execution failed',
+            endTime: new Date()
+          }
+        }));
+      }
+
+      completedQuestions++;
+      setOverallProgress((completedQuestions / totalQuestions) * 100);
+    }
+
+    setIsExecuting(false);
+    toast({
+      title: "Agent Execution Complete",
+      description: `Completed data collection for ${completedQuestions} questions`,
+    });
+  };
+
+  const getStatusIcon = (status: AgentExecution['status']) => {
+    switch (status) {
+      case 'pending': return Clock;
+      case 'running': return RefreshCw;
+      case 'completed': return CheckCircle;
+      case 'failed': return AlertTriangle;
+      case 'no_connector': return AlertTriangle;
+      default: return Clock;
+    }
+  };
+
+  const getStatusColor = (status: AgentExecution['status']) => {
+    switch (status) {
+      case 'pending': return 'text-slate-500';
+      case 'running': return 'text-blue-600';
+      case 'completed': return 'text-green-600';
+      case 'failed': return 'text-red-600';
+      case 'no_connector': return 'text-orange-600';
+      default: return 'text-slate-500';
+    }
+  };
+
+  const getStatusText = (status: AgentExecution['status']) => {
+    switch (status) {
+      case 'pending': return 'Pending';
+      case 'running': return 'Running';
+      case 'completed': return 'Completed';
+      case 'failed': return 'Failed';
+      case 'no_connector': return 'No Connector';
+      default: return 'Unknown';
+    }
+  };
+
+  if (isLoadingAnalyses) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <div className="text-center">
+          <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-4 text-purple-600" />
+          <p className="text-slate-600">Loading question analyses...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (analyses.length === 0) {
+    return (
+      <Card className="card-modern">
+        <CardHeader>
+          <CardTitle className="flex items-center space-x-3">
+            <Bot className="h-5 w-5 text-purple-600" />
+            <span>Data Collection</span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Alert>
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>
+              No question analyses found. Please complete Step 3 (Question Analysis) before proceeding.
+            </AlertDescription>
+          </Alert>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const questionsWithoutConnectors = analyses.filter(a => !getConnectorForTool(a.toolSuggestion));
+  const executionList = Object.values(executions);
+  const completedCount = executionList.filter(e => e.status === 'completed').length;
+  const failedCount = executionList.filter(e => e.status === 'failed').length;
+  const noConnectorCount = executionList.filter(e => e.status === 'no_connector').length;
+
+  return (
+    <div className="space-y-6">
+      {/* Header Card */}
+      <Card className="card-modern">
+        <CardHeader>
+          <CardTitle className="flex items-center space-x-3">
+            <Bot className="h-5 w-5 text-purple-600" />
+            <span className="bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
+              AI Agent Data Collection
+            </span>
+          </CardTitle>
+          <p className="text-sm text-slate-600">
+            Execute AI agents to collect data based on configured connectors and analysis prompts
+          </p>
+        </CardHeader>
+        
+        <CardContent>
+          {questionsWithoutConnectors.length > 0 && (
+            <Alert className="mb-4">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription>
+                {questionsWithoutConnectors.length} question(s) don't have configured connectors. 
+                Please configure connectors in Settings → CI Connectors before executing agents.
+              </AlertDescription>
+            </Alert>
+          )}
+
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <Button
+                onClick={executeAllAgents}
+                disabled={isExecuting || analyses.length === 0}
+                className="btn-gradient"
+              >
+                {isExecuting ? (
+                  <>
+                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                    Executing Agents...
+                  </>
+                ) : (
+                  <>
+                    <Play className="h-4 w-4 mr-2" />
+                    Execute All Agents
+                  </>
+                )}
+              </Button>
+            </div>
+            
+            <div className="flex items-center space-x-4 text-sm text-slate-600">
+              <span>{analyses.length} questions</span>
+              {completedCount > 0 && (
+                <>
+                  <span>•</span>
+                  <span className="text-green-600">{completedCount} completed</span>
+                </>
+              )}
+              {failedCount > 0 && (
+                <>
+                  <span>•</span>
+                  <span className="text-red-600">{failedCount} failed</span>
+                </>
+              )}
+              {noConnectorCount > 0 && (
+                <>
+                  <span>•</span>
+                  <span className="text-orange-600">{noConnectorCount} no connector</span>
+                </>
+              )}
+            </div>
+          </div>
+          
+          {/* Overall Progress */}
+          {isExecuting && (
+            <div className="mt-4">
+              <div className="flex items-center justify-between text-sm text-slate-600 mb-2">
+                <span>Overall Progress</span>
+                <span>{Math.round(overallProgress)}%</span>
+              </div>
+              <Progress value={overallProgress} className="h-2" />
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Execution Results */}
+      <Card className="card-modern">
+        <CardHeader>
+          <CardTitle className="flex items-center space-x-3">
+            <CheckCircle className="h-5 w-5 text-green-600" />
+            <span>Agent Execution Status</span>
+          </CardTitle>
+          <p className="text-sm text-slate-600">
+            Monitor the progress and results of AI agent data collection
+          </p>
+        </CardHeader>
+        
+        <CardContent>
+          <div className="space-y-4">
+            {analyses.map((analysis, index) => {
+              const execution = executions[analysis.questionId] || { questionId: analysis.questionId, status: 'pending' };
+              const connector = getConnectorForTool(analysis.toolSuggestion);
+              const StatusIcon = getStatusIcon(execution.status);
+              const ToolIcon = TOOL_ICONS[analysis.toolSuggestion as keyof typeof TOOL_ICONS] || Database;
+              
+              return (
+                <div key={`execution-${analysis.questionId}-${index}`} className="border border-slate-200 rounded-lg p-4">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1 space-y-3">
+                      {/* Header */}
+                      <div className="flex items-center space-x-3">
+                        <div className="flex items-center space-x-2">
+                          <ToolIcon className="h-4 w-4 text-slate-600" />
+                          <span className="font-medium text-slate-900">
+                            {analysis.questionId || `Q${index + 1}`}
+                          </span>
+                        </div>
+                        
+                        <Badge variant="outline" className="flex items-center space-x-1">
+                          <StatusIcon className={`h-3 w-3 ${getStatusColor(execution.status)} ${execution.status === 'running' ? 'animate-spin' : ''}`} />
+                          <span className={getStatusColor(execution.status)}>{getStatusText(execution.status)}</span>
+                        </Badge>
+                        
+                        {connector ? (
+                          <Badge variant="secondary" className="bg-green-100 text-green-800">
+                            {connector.name}
+                          </Badge>
+                        ) : (
+                          <Badge variant="destructive">No Connector</Badge>
+                        )}
+                      </div>
+                      
+                      {/* Question */}
+                      <div>
+                        <p className="text-sm font-medium text-slate-700">Question:</p>
+                        <p className="text-sm text-slate-600">{analysis.originalQuestion}</p>
+                      </div>
+                      
+                      {/* Agent Prompt */}
+                      <div>
+                        <p className="text-sm font-medium text-slate-700">Agent Prompt:</p>
+                        <p className="text-sm text-slate-600">{analysis.aiPrompt}</p>
+                      </div>
+                      
+                      {/* Progress for running execution */}
+                      {execution.status === 'running' && (
+                        <div>
+                          <div className="flex items-center justify-between text-sm text-slate-600 mb-1">
+                            <span>Progress</span>
+                            <span>{execution.progress || 0}%</span>
+                          </div>
+                          <Progress value={execution.progress || 0} className="h-1" />
+                        </div>
+                      )}
+                      
+                      {/* Result for completed execution */}
+                      {execution.status === 'completed' && execution.result && (
+                        <div className="bg-green-50 border border-green-200 rounded p-3">
+                          <p className="text-sm font-medium text-green-800 mb-1">Data Collection Result:</p>
+                          <p className="text-sm text-green-700">{execution.result.data}</p>
+                          <div className="flex items-center space-x-4 mt-2 text-xs text-green-600">
+                            <span>Records: {execution.result.records}</span>
+                            <span>Source: {execution.result.source}</span>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Error for failed execution */}
+                      {execution.status === 'failed' && execution.error && (
+                        <div className="bg-red-50 border border-red-200 rounded p-3">
+                          <p className="text-sm font-medium text-red-800 mb-1">Execution Error:</p>
+                          <p className="text-sm text-red-700">{execution.error}</p>
+                        </div>
+                      )}
+                      
+                      {/* No connector warning */}
+                      {execution.status === 'no_connector' && (
+                        <div className="bg-orange-50 border border-orange-200 rounded p-3">
+                          <p className="text-sm font-medium text-orange-800 mb-1">Missing Connector:</p>
+                          <p className="text-sm text-orange-700">
+                            No {TOOL_NAMES[analysis.toolSuggestion as keyof typeof TOOL_NAMES]} connector configured for CI {applicationData?.ciId}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

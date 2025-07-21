@@ -10,7 +10,7 @@ import Navigation from "../components/wizard/navigation";
 import StepOne from "../components/wizard/step-one";
 import StepTwo from "../components/wizard/step-two";
 import StepThree from "../components/wizard/step-three-new";
-import StepFour from "../components/wizard/step-four";
+import StepFour from "../components/wizard/step-four-new";
 import StepFive from "../components/wizard/step-five";
 import { Application } from "@shared/schema";
 
