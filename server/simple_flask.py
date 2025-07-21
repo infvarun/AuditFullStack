@@ -183,6 +183,60 @@ def get_application(application_id):
             cursor.close()
             conn.close()
 
+@app.route('/api/applications/<int:application_id>', methods=['PUT'])
+def update_application(application_id):
+    """Update existing application"""
+    try:
+        data = request.get_json()
+        
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'error': 'Database connection failed'}), 500
+        
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # First check if application exists
+        cursor.execute("SELECT id FROM applications WHERE id = %s", (application_id,))
+        if not cursor.fetchone():
+            return jsonify({'error': 'Application not found'}), 404
+        
+        # Update the application
+        cursor.execute("""
+            UPDATE applications 
+            SET name = %s, audit_name = %s, ci_id = %s, start_date = %s, end_date = %s
+            WHERE id = %s
+            RETURNING id, name, audit_name, ci_id, start_date, end_date, created_at
+        """, (
+            data.get('name') or data['auditName'],
+            data['auditName'],
+            data['ciId'],
+            data.get('startDate') or data.get('auditDateFrom'),
+            data.get('endDate') or data.get('auditDateTo'),
+            application_id
+        ))
+        
+        row = cursor.fetchone()
+        conn.commit()
+        
+        app_data = {
+            'id': row['id'],
+            'auditName': row['audit_name'],
+            'ciId': row['ci_id'],
+            'auditDateFrom': row['start_date'],
+            'auditDateTo': row['end_date'],
+            'enableFollowupQuestions': False,  # Default value
+            'createdAt': row['created_at']
+        }
+        
+        return jsonify(app_data), 200
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if conn:
+            cursor.close()
+            conn.close()
+
 # Excel processing API
 @app.route('/api/excel/get-columns', methods=['POST'])
 def get_excel_columns():
