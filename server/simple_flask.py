@@ -703,8 +703,11 @@ def save_question_analyses():
         # Delete existing analyses for this application
         cursor.execute("DELETE FROM question_analyses WHERE application_id = %s", (application_id,))
         
-        # Insert new analyses
-        for analysis in analyses:
+        # Insert new analyses with unique identifiers
+        for idx, analysis in enumerate(analyses):
+            # Create unique question_id by combining original id with index
+            unique_question_id = f"{analysis.get('questionId', analysis.get('id', f'Q{idx+1}'))}-{idx}"
+            
             cursor.execute("""
                 INSERT INTO question_analyses 
                 (application_id, question_id, original_question, category, subcategory,
@@ -712,11 +715,11 @@ def save_question_analyses():
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
                 application_id,
-                analysis.get('id', ''),
+                unique_question_id,
                 analysis.get('originalQuestion', ''),
                 analysis.get('category', ''),
                 analysis.get('subcategory', ''),
-                analysis.get('prompt', ''),
+                analysis.get('aiPrompt', ''),
                 analysis.get('toolSuggestion', ''),
                 analysis.get('connectorReason', ''),
                 analysis.get('connectorToUse', '')

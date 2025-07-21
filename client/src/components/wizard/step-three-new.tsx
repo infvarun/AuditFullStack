@@ -193,10 +193,10 @@ export default function StepThree({ applicationId, onNext, setCanProceed }: Step
     analyzeQuestionsMutation.mutate(questions);
   };
 
-  const handleToolChange = (questionId: string, newTool: string) => {
-    setAnalyses(prev => prev.map(analysis => 
-      analysis.questionId === questionId 
-        ? { ...analysis, toolSuggestion: newTool }
+  const handleToolChange = (questionId: string, newTool: string, index: number) => {
+    setAnalyses(prev => prev.map((analysis, idx) => 
+      idx === index 
+        ? { ...analysis, toolSuggestion: newTool, connectorToUse: newTool }
         : analysis
     ));
     setHasUnsavedChanges(true);
@@ -396,7 +396,7 @@ export default function StepThree({ applicationId, onNext, setCanProceed }: Step
                         </label>
                         <Select 
                           value={analysis.toolSuggestion} 
-                          onValueChange={(value) => handleToolChange(analysis.questionId, value)}
+                          onValueChange={(value) => handleToolChange(analysis.questionId, value, index)}
                         >
                           <SelectTrigger className="mt-1">
                             <SelectValue />
