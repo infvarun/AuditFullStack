@@ -487,7 +487,105 @@ def process_excel():
             'error': f'Error processing Excel file: {str(e)}'
         }), 500
 
-# Question analysis API endpoints
+# Question analysis API endpoints using OpenAI
+@app.route('/api/questions/analyze', methods=['POST'])
+def analyze_questions_with_ai():
+    """Analyze questions using OpenAI to determine tools and prompts"""
+    try:
+        data = request.get_json()
+        application_id = data.get('applicationId')
+        questions = data.get('questions', [])
+        
+        if not application_id or not questions:
+            return jsonify({'error': 'Application ID and questions are required'}), 400
+        
+        from openai import OpenAI
+        client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+        
+        analyses = []
+        
+        for question in questions:
+            try:
+                # Create AI prompt for analysis
+                system_prompt = """You are an expert audit data collection specialist. For each audit question, you need to:
+
+1. Determine the most appropriate tool for data collection
+2. Create a specific prompt for an AI agent to collect the required data
+3. Explain why this tool/connector is needed
+
+Available tools:
+- sql_server: For querying SQL Server databases
+- oracle_db: For querying Oracle databases  
+- gnosis: For searching document repositories
+- jira: For accessing Jira tickets and project data
+- qtest: For test management and quality assurance data
+- service_now: For ITSM and service management data
+
+Respond in JSON format with:
+{
+  "toolSuggestion": "tool_id",
+  "aiPrompt": "Specific instructions for AI agent data collection",
+  "connectorReason": "Why this tool/connector is appropriate",
+  "category": "Main category of the question",
+  "subcategory": "Specific subcategory"
+}"""
+
+                user_prompt = f"""Analyze this audit question:
+
+Question Number: {question.get('questionNumber', '')}
+Process: {question.get('process', '')}
+Sub-Process: {question.get('subProcess', '')}
+Question: {question.get('question', '')}
+
+Determine the best tool for data collection and create an appropriate AI agent prompt."""
+
+                response = client.chat.completions.create(
+                    model="gpt-4o",  # the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    response_format={"type": "json_object"}
+                )
+                
+                ai_analysis = json.loads(response.choices[0].message.content)
+                
+                analysis = {
+                    'questionId': question.get('id', ''),
+                    'originalQuestion': question.get('question', ''),
+                    'category': ai_analysis.get('category', question.get('process', '')),
+                    'subcategory': ai_analysis.get('subcategory', question.get('subProcess', '')),
+                    'aiPrompt': ai_analysis.get('aiPrompt', ''),
+                    'toolSuggestion': ai_analysis.get('toolSuggestion', 'sql_server'),
+                    'connectorReason': ai_analysis.get('connectorReason', ''),
+                    'connectorToUse': ai_analysis.get('toolSuggestion', 'sql_server')
+                }
+                
+                analyses.append(analysis)
+                
+            except Exception as e:
+                print(f"Error analyzing question {question.get('id', '')}: {e}")
+                # Fallback analysis
+                analyses.append({
+                    'questionId': question.get('id', ''),
+                    'originalQuestion': question.get('question', ''),
+                    'category': question.get('process', ''),
+                    'subcategory': question.get('subProcess', ''),
+                    'aiPrompt': f"Collect data to answer: {question.get('question', '')}",
+                    'toolSuggestion': 'sql_server',
+                    'connectorReason': 'Default suggestion - requires manual review',
+                    'connectorToUse': 'sql_server'
+                })
+        
+        return jsonify({
+            'analyses': analyses,
+            'total': len(analyses)
+        }), 200
+        
+    except Exception as e:
+        print(f"Error in analyze_questions_with_ai: {e}")
+        return jsonify({'error': f'Analysis failed: {str(e)}'}), 500
+
 @app.route('/api/questions/analyses/<int:application_id>', methods=['GET'])
 def get_question_analyses(application_id):
     """Get saved question analyses for application"""

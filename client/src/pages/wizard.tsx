@@ -9,7 +9,7 @@ import ProgressBar from "../components/wizard/progress-bar";
 import Navigation from "../components/wizard/navigation";
 import StepOne from "../components/wizard/step-one";
 import StepTwo from "../components/wizard/step-two";
-import StepThree from "../components/wizard/step-three";
+import StepThree from "../components/wizard/step-three-new";
 import StepFour from "../components/wizard/step-four";
 import StepFive from "../components/wizard/step-five";
 import { Application } from "@shared/schema";
@@ -17,7 +17,7 @@ import { Application } from "@shared/schema";
 const steps = [
   { id: 1, title: "Application Setup", component: StepOne },
   { id: 2, title: "Data Request", component: StepTwo },
-  { id: 3, title: "Tool Connectors", component: StepThree },
+  { id: 3, title: "Question Analysis", component: StepThree },
   { id: 4, title: "Data Collection", component: StepFour },
   { id: 5, title: "Results", component: StepFive },
 ];

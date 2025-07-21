@@ -1,0 +1,473 @@
+import { useState, useEffect } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { Brain, CheckCircle, Settings, Save, RefreshCw, Database, FileText, Bug, Clipboard, TestTube, Wrench } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
+import { Button } from "../ui/button";
+import { Badge } from "../ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
+import { Separator } from "../ui/separator";
+import { Progress } from "../ui/progress";
+import { apiRequest, queryClient } from "../../lib/queryClient";
+import { useToast } from "../../hooks/use-toast";
+
+interface StepThreeProps {
+  applicationId: number | null;
+  onNext: () => void;
+  setCanProceed: (canProceed: boolean) => void;
+}
+
+interface Question {
+  id: string;
+  questionNumber: string;
+  process: string;
+  subProcess: string;
+  question: string;
+}
+
+interface QuestionAnalysis {
+  questionId: string;
+  originalQuestion: string;
+  category: string;
+  subcategory: string;
+  aiPrompt: string;
+  toolSuggestion: string;
+  connectorReason: string;
+  connectorToUse: string;
+}
+
+interface ToolConnector {
+  id: number;
+  name: string;
+  type: string;
+  ciId: string;
+  config: any;
+}
+
+const AVAILABLE_TOOLS = [
+  { id: 'sql_server', name: 'SQL Server DB', icon: Database },
+  { id: 'oracle_db', name: 'Oracle DB', icon: Database },
+  { id: 'gnosis', name: 'Gnosis Document Repository', icon: FileText },
+  { id: 'jira', name: 'Jira', icon: Bug },
+  { id: 'qtest', name: 'QTest', icon: TestTube },
+  { id: 'service_now', name: 'Service Now', icon: Wrench },
+];
+
+export default function StepThree({ applicationId, onNext, setCanProceed }: StepThreeProps) {
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [analyses, setAnalyses] = useState<QuestionAnalysis[]>([]);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisProgress, setAnalysisProgress] = useState(0);
+  const [isSaved, setIsSaved] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+
+  const { toast } = useToast();
+
+  // Get application data
+  const { data: applicationData } = useQuery({
+    queryKey: [`/api/applications/${applicationId}`],
+    enabled: !!applicationId,
+  });
+
+  // Get data requests (questions from uploaded files)
+  const { data: dataRequests, isLoading } = useQuery({
+    queryKey: ["/api/data-requests/application", applicationId],
+    enabled: !!applicationId,
+  });
+
+  // Get available connectors for this CI
+  const { data: connectors = [] } = useQuery<ToolConnector[]>({
+    queryKey: [`/api/connectors/ci/${applicationData?.ciId}`],
+    enabled: !!applicationData?.ciId,
+  });
+
+  // Get existing question analyses
+  const { data: existingAnalyses, refetch: refetchAnalyses } = useQuery<QuestionAnalysis[]>({
+    queryKey: [`/api/questions/analyses/${applicationId}`],
+    enabled: !!applicationId,
+  });
+
+  // Extract questions from data requests
+  useEffect(() => {
+    if (dataRequests && Array.isArray(dataRequests)) {
+      const allQuestions: Question[] = [];
+      dataRequests.forEach((request: any) => {
+        if (request.questions) {
+          const parsedQuestions = typeof request.questions === 'string' 
+            ? JSON.parse(request.questions) 
+            : request.questions;
+          allQuestions.push(...parsedQuestions);
+        }
+      });
+      setQuestions(allQuestions);
+    }
+  }, [dataRequests]);
+
+  // Load existing analyses
+  useEffect(() => {
+    if (existingAnalyses && existingAnalyses.length > 0) {
+      setAnalyses(existingAnalyses);
+      setIsSaved(true);
+      setCanProceed(true);
+    }
+  }, [existingAnalyses, setCanProceed]);
+
+  // Check if we can proceed
+  useEffect(() => {
+    const hasAnalyses = analyses.length > 0;
+    setCanProceed(hasAnalyses && isSaved);
+  }, [analyses, isSaved, setCanProceed]);
+
+  // AI Question Analysis Mutation
+  const analyzeQuestionsMutation = useMutation({
+    mutationFn: async (questions: Question[]) => {
+      const response = await apiRequest("POST", "/api/questions/analyze", {
+        applicationId,
+        questions: questions
+      });
+      return response.json();
+    },
+    onSuccess: (data) => {
+      setAnalyses(data.analyses || []);
+      setIsAnalyzing(false);
+      setAnalysisProgress(100);
+      setHasUnsavedChanges(true);
+      setIsSaved(false);
+      toast({
+        title: "Analysis Complete",
+        description: `${data.analyses?.length || 0} questions analyzed successfully`,
+      });
+    },
+    onError: (error) => {
+      setIsAnalyzing(false);
+      setAnalysisProgress(0);
+      toast({
+        title: "Analysis Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Save analyses mutation
+  const saveAnalysesMutation = useMutation({
+    mutationFn: async (analyses: QuestionAnalysis[]) => {
+      const response = await apiRequest("POST", `/api/questions/analyses/${applicationId}/save`, {
+        analyses: analyses
+      });
+      return response.json();
+    },
+    onSuccess: () => {
+      setIsSaved(true);
+      setHasUnsavedChanges(false);
+      toast({
+        title: "Analyses Saved",
+        description: "Question analyses have been saved successfully",
+      });
+      refetchAnalyses();
+    },
+    onError: (error) => {
+      toast({
+        title: "Save Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const startAnalysis = () => {
+    setIsAnalyzing(true);
+    setAnalysisProgress(0);
+    
+    // Simulate progress
+    const interval = setInterval(() => {
+      setAnalysisProgress(prev => {
+        if (prev >= 90) {
+          clearInterval(interval);
+          return 90;
+        }
+        return prev + 10;
+      });
+    }, 500);
+
+    analyzeQuestionsMutation.mutate(questions);
+  };
+
+  const handleToolChange = (questionId: string, newTool: string) => {
+    setAnalyses(prev => prev.map(analysis => 
+      analysis.questionId === questionId 
+        ? { ...analysis, toolSuggestion: newTool }
+        : analysis
+    ));
+    setHasUnsavedChanges(true);
+    setIsSaved(false);
+  };
+
+  const getConnectorStatus = (toolType: string) => {
+    const connector = connectors.find(c => c.type === toolType);
+    return connector ? { available: true, connector } : { available: false, connector: null };
+  };
+
+  const getToolIcon = (toolType: string) => {
+    const tool = AVAILABLE_TOOLS.find(t => t.id === toolType);
+    return tool?.icon || Database;
+  };
+
+  const getToolName = (toolType: string) => {
+    const tool = AVAILABLE_TOOLS.find(t => t.id === toolType);
+    return tool?.name || toolType;
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <div className="text-center">
+          <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-4 text-purple-600" />
+          <p className="text-slate-600">Loading questions...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (questions.length === 0) {
+    return (
+      <Card className="card-modern">
+        <CardHeader>
+          <CardTitle className="flex items-center space-x-3">
+            <Brain className="h-5 w-5 text-purple-600" />
+            <span>Question Analysis</span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="text-center py-8">
+            <FileText className="h-12 w-12 text-slate-400 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-slate-900 mb-2">No Questions Found</h3>
+            <p className="text-slate-600">
+              Please upload and process Excel files in Step 2 before proceeding with question analysis.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header Card */}
+      <Card className="card-modern">
+        <CardHeader>
+          <CardTitle className="flex items-center space-x-3">
+            <Brain className="h-5 w-5 text-purple-600" />
+            <span className="bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
+              AI-Powered Question Analysis
+            </span>
+          </CardTitle>
+          <p className="text-sm text-slate-600">
+            Analyze {questions.length} questions to determine appropriate tools and data collection methods
+          </p>
+        </CardHeader>
+        
+        <CardContent>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <Button
+                onClick={startAnalysis}
+                disabled={isAnalyzing || analyzeQuestionsMutation.isPending}
+                className="btn-gradient"
+              >
+                {isAnalyzing ? (
+                  <>
+                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                    Analyzing...
+                  </>
+                ) : (
+                  <>
+                    <Brain className="h-4 w-4 mr-2" />
+                    {analyses.length > 0 ? 'Re-analyze Questions' : 'Analyze Questions'}
+                  </>
+                )}
+              </Button>
+              
+              {analyses.length > 0 && (
+                <Button
+                  onClick={() => saveAnalysesMutation.mutate(analyses)}
+                  disabled={!hasUnsavedChanges || saveAnalysesMutation.isPending}
+                  variant={isSaved ? "outline" : "default"}
+                  className={isSaved ? "border-green-500 text-green-700" : ""}
+                >
+                  {isSaved ? (
+                    <>
+                      <CheckCircle className="h-4 w-4 mr-2 text-green-600" />
+                      Saved
+                    </>
+                  ) : (
+                    <>
+                      <Save className="h-4 w-4 mr-2" />
+                      Save Changes
+                    </>
+                  )}
+                </Button>
+              )}
+            </div>
+            
+            <div className="flex items-center space-x-2 text-sm text-slate-600">
+              <span>{questions.length} questions</span>
+              {analyses.length > 0 && (
+                <>
+                  <span>•</span>
+                  <span>{analyses.length} analyzed</span>
+                </>
+              )}
+            </div>
+          </div>
+          
+          {/* Progress Bar */}
+          {isAnalyzing && (
+            <div className="mt-4">
+              <div className="flex items-center justify-between text-sm text-slate-600 mb-2">
+                <span>Analyzing questions with AI...</span>
+                <span>{analysisProgress}%</span>
+              </div>
+              <Progress value={analysisProgress} className="h-2" />
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Analysis Results */}
+      {analyses.length > 0 && (
+        <Card className="card-modern">
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-3">
+              <Clipboard className="h-5 w-5 text-green-600" />
+              <span>Question Analysis Results</span>
+            </CardTitle>
+            <p className="text-sm text-slate-600">
+              Review and adjust tool suggestions for each question
+            </p>
+          </CardHeader>
+          
+          <CardContent>
+            <div className="space-y-4">
+              {analyses.map((analysis, index) => {
+                const connectorStatus = getConnectorStatus(analysis.toolSuggestion);
+                const ToolIcon = getToolIcon(analysis.toolSuggestion);
+                
+                return (
+                  <div key={analysis.questionId} className="border border-slate-200 rounded-lg p-4">
+                    <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+                      {/* Question ID */}
+                      <div>
+                        <label className="text-xs font-medium text-slate-500 uppercase tracking-wide">
+                          Question ID
+                        </label>
+                        <p className="mt-1 font-mono text-sm text-slate-900">
+                          {analysis.questionId}
+                        </p>
+                      </div>
+                      
+                      {/* Question */}
+                      <div>
+                        <label className="text-xs font-medium text-slate-500 uppercase tracking-wide">
+                          Question
+                        </label>
+                        <p className="mt-1 text-sm text-slate-900 line-clamp-2">
+                          {analysis.originalQuestion}
+                        </p>
+                      </div>
+                      
+                      {/* AI Prompt */}
+                      <div>
+                        <label className="text-xs font-medium text-slate-500 uppercase tracking-wide">
+                          Agent Prompt
+                        </label>
+                        <p className="mt-1 text-sm text-slate-600 line-clamp-2">
+                          {analysis.aiPrompt}
+                        </p>
+                      </div>
+                      
+                      {/* Tool Selection */}
+                      <div>
+                        <label className="text-xs font-medium text-slate-500 uppercase tracking-wide">
+                          Tool To Use
+                        </label>
+                        <Select 
+                          value={analysis.toolSuggestion} 
+                          onValueChange={(value) => handleToolChange(analysis.questionId, value)}
+                        >
+                          <SelectTrigger className="mt-1">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {AVAILABLE_TOOLS.map(tool => {
+                              const Icon = tool.icon;
+                              return (
+                                <SelectItem key={tool.id} value={tool.id}>
+                                  <div className="flex items-center space-x-2">
+                                    <Icon className="h-4 w-4" />
+                                    <span>{tool.name}</span>
+                                  </div>
+                                </SelectItem>
+                              );
+                            })}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      
+                      {/* Connector Status */}
+                      <div>
+                        <label className="text-xs font-medium text-slate-500 uppercase tracking-wide">
+                          Tool Connector
+                        </label>
+                        <div className="mt-1">
+                          {connectorStatus.available ? (
+                            <Badge variant="secondary" className="bg-green-100 text-green-800">
+                              <CheckCircle className="h-3 w-3 mr-1" />
+                              Available
+                            </Badge>
+                          ) : (
+                            <Badge variant="destructive">
+                              <Settings className="h-3 w-3 mr-1" />
+                              Not Available
+                            </Badge>
+                          )}
+                        </div>
+                        {!connectorStatus.available && (
+                          <p className="text-xs text-slate-500 mt-1">
+                            Configure in Settings → CI Connectors
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    
+                    {/* Expandable Details */}
+                    <details className="mt-3">
+                      <summary className="cursor-pointer text-sm text-purple-600 hover:text-purple-800">
+                        View Analysis Details
+                      </summary>
+                      <div className="mt-2 p-3 bg-slate-50 rounded border text-sm">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <p className="font-medium text-slate-700">Category:</p>
+                            <p className="text-slate-600">{analysis.category}</p>
+                          </div>
+                          <div>
+                            <p className="font-medium text-slate-700">Subcategory:</p>
+                            <p className="text-slate-600">{analysis.subcategory}</p>
+                          </div>
+                          <div className="md:col-span-2">
+                            <p className="font-medium text-slate-700">Connector Reasoning:</p>
+                            <p className="text-slate-600">{analysis.connectorReason}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </details>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
