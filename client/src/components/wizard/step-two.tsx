@@ -55,22 +55,12 @@ export default function StepTwo({ applicationId, onNext, setCanProceed }: StepTw
 
   const { data: dataRequests, isLoading, refetch } = useQuery({
     queryKey: ["/api/data-requests/application", applicationId],
-    queryFn: async () => {
-      const response = await fetch(`/api/data-requests/application/${applicationId}`);
-      if (!response.ok) throw new Error("Failed to fetch data requests");
-      return response.json();
-    },
     enabled: !!applicationId,
   });
 
   // Get application data to check follow-up questions setting
   const { data: applicationData } = useQuery({
     queryKey: [`/api/applications/${applicationId}`],
-    queryFn: async () => {
-      const response = await fetch(`/api/applications/${applicationId}`);
-      if (!response.ok) throw new Error("Failed to fetch application");
-      return response.json();
-    },
     enabled: !!applicationId,
   });
 
@@ -108,14 +98,7 @@ export default function StepTwo({ applicationId, onNext, setCanProceed }: StepTw
       const formData = new FormData();
       formData.append("file", file);
       
-      const response = await fetch("/api/excel/get-columns", {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to get columns");
-      }
+      const response = await apiRequest("POST", "/api/excel/get-columns", formData);
 
       return response.json();
     },
@@ -124,7 +107,7 @@ export default function StepTwo({ applicationId, onNext, setCanProceed }: StepTw
         setPrimaryFile(prev => ({
           ...prev,
           columns: data.columns,
-          sampleData: data.sample_data,
+          sampleData: data.sampleData || data.sample_data || [],
           file: file
         }));
       } else if (processingFile === 'followup' && currentFileIndex !== null) {
@@ -133,7 +116,7 @@ export default function StepTwo({ applicationId, onNext, setCanProceed }: StepTw
           newFiles[currentFileIndex] = {
             ...newFiles[currentFileIndex],
             columns: data.columns,
-            sampleData: data.sample_data,
+            sampleData: data.sampleData || data.sample_data || [],
             file: file
           };
           return newFiles;
@@ -159,16 +142,7 @@ export default function StepTwo({ applicationId, onNext, setCanProceed }: StepTw
       formData.append("fileType", fileType);
       formData.append("columnMappings", JSON.stringify(columnMappings));
       
-      const response = await fetch("/api/excel/process", {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || "Upload failed");
-      }
-
+      const response = await apiRequest("POST", "/api/excel/process", formData);
       return response.json();
     },
     onSuccess: (data) => {

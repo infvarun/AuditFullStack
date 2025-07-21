@@ -238,6 +238,51 @@ def update_application(application_id):
             cursor.close()
             conn.close()
 
+# Data requests API
+@app.route('/api/data-requests/application/<int:application_id>', methods=['GET'])
+def get_data_requests(application_id):
+    """Get data requests for application"""
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'error': 'Database connection failed'}), 500
+        
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute("""
+            SELECT id, application_id, file_name, file_size, file_type, 
+                   questions, total_questions, categories, subcategories, 
+                   column_mappings, uploaded_at
+            FROM data_requests 
+            WHERE application_id = %s
+            ORDER BY uploaded_at DESC
+        """, (application_id,))
+        
+        requests = []
+        for row in cursor.fetchall():
+            request_data = {
+                'id': row['id'],
+                'applicationId': row['application_id'],
+                'fileName': row['file_name'],
+                'fileSize': row['file_size'],
+                'fileType': row['file_type'],
+                'questions': row['questions'],
+                'totalQuestions': row['total_questions'],
+                'categories': row['categories'],
+                'subcategories': row['subcategories'],
+                'columnMappings': row['column_mappings'],
+                'uploadedAt': row['uploaded_at']
+            }
+            requests.append(request_data)
+        
+        return jsonify(requests), 200
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if conn:
+            cursor.close()
+            conn.close()
+
 # Excel processing API
 @app.route('/api/excel/get-columns', methods=['POST'])
 def get_excel_columns():
@@ -280,6 +325,112 @@ def get_excel_columns():
     except Exception as e:
         return jsonify({
             'error': f'Error reading Excel file: {str(e)}'
+        }), 500
+
+@app.route('/api/excel/process', methods=['POST'])
+def process_excel():
+    """Process Excel file and save to data_requests table"""
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file uploaded'}), 400
+        
+        file = request.files['file']
+        if not file or not file.filename:
+            return jsonify({'error': 'No file selected'}), 400
+        
+        if not allowed_file(file.filename):
+            return jsonify({'error': 'Invalid file format. Only .xlsx and .xls files are allowed'}), 400
+        
+        application_id = request.form.get('applicationId')
+        file_type = request.form.get('fileType', 'primary')
+        column_mappings_str = request.form.get('columnMappings', '{}')
+        
+        if not application_id:
+            return jsonify({'error': 'Application ID is required'}), 400
+        
+        try:
+            column_mappings = json.loads(column_mappings_str)
+        except:
+            return jsonify({'error': 'Invalid column mappings format'}), 400
+        
+        # Save file temporarily
+        filename = secure_filename(file.filename)
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], f"process_{filename}")
+        file.save(file_path)
+        
+        try:
+            # Read Excel file
+            df = pd.read_excel(file_path)
+            
+            # Extract questions based on column mappings
+            questions = []
+            categories = set()
+            subcategories = set()
+            
+            for index, row in df.iterrows():
+                question_data = {
+                    'id': f"Q{index + 1}",
+                    'questionNumber': str(row.get(column_mappings.get('questionNumber', ''), f"Q{index + 1}")),
+                    'process': str(row.get(column_mappings.get('process', ''), '')),
+                    'subProcess': str(row.get(column_mappings.get('subProcess', ''), '')),
+                    'question': str(row.get(column_mappings.get('question', ''), ''))
+                }
+                questions.append(question_data)
+                
+                # Collect categories and subcategories
+                if question_data['process']:
+                    categories.add(question_data['process'])
+                if question_data['subProcess']:
+                    subcategories.add(question_data['subProcess'])
+            
+            # Save to database
+            conn = get_db_connection()
+            if not conn:
+                return jsonify({'error': 'Database connection failed'}), 500
+            
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            
+            # Insert data request record
+            cursor.execute("""
+                INSERT INTO data_requests 
+                (application_id, file_name, file_size, file_type, questions, 
+                 total_questions, categories, subcategories, column_mappings)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id, file_name, total_questions
+            """, (
+                application_id,
+                filename,
+                len(file.read()),
+                file_type,
+                json.dumps(questions),
+                len(questions),
+                json.dumps(list(categories)),
+                json.dumps(list(subcategories)),
+                json.dumps(column_mappings)
+            ))
+            
+            result = cursor.fetchone()
+            conn.commit()
+            
+            return jsonify({
+                'id': result['id'],
+                'fileName': result['file_name'],
+                'totalQuestions': result['total_questions'],
+                'message': 'File processed successfully'
+            }), 201
+            
+        finally:
+            # Clean up temporary file
+            if os.path.exists(file_path):
+                os.remove(file_path)
+            
+            if conn:
+                cursor.close()
+                conn.close()
+                
+    except Exception as e:
+        return jsonify({
+            'error': f'Error processing Excel file: {str(e)}'
         }), 500
 
 # Health check
