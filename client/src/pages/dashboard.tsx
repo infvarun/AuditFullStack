@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { 
   Search, 
@@ -12,24 +12,60 @@ import {
   Clock,
   CheckCircle,
   AlertCircle,
-  Bot
+  Bot,
+  Trash2
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { Avatar, AvatarFallback } from "../components/ui/avatar";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "../components/ui/alert-dialog";
 import { Application } from "@shared/schema";
+import { apiRequest, queryClient } from "../lib/queryClient";
+import { useToast } from "../hooks/use-toast";
 
 export default function Dashboard() {
   const [, setLocation] = useLocation();
   const [searchQuery, setSearchQuery] = useState("");
+  const { toast } = useToast();
 
   // Fetch all applications
-  const { data: applications = [], isLoading } = useQuery<Application[]>({
+  const { data: applications = [], isLoading, refetch } = useQuery<Application[]>({
     queryKey: ["/api/applications"],
     enabled: true,
   });
+
+  // Delete application mutation
+  const deleteApplicationMutation = useMutation({
+    mutationFn: async (applicationId: number) => {
+      const response = await apiRequest("DELETE", `/api/applications/${applicationId}`);
+      if (!response.ok) {
+        throw new Error("Failed to delete application");
+      }
+      return response.json();
+    },
+    onSuccess: (data, applicationId) => {
+      toast({
+        title: "Audit Deleted",
+        description: "The audit and all associated data have been permanently deleted.",
+      });
+      // Invalidate and refetch applications
+      queryClient.invalidateQueries({ queryKey: ["/api/applications"] });
+      refetch();
+    },
+    onError: (error) => {
+      toast({
+        title: "Delete Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleDeleteApplication = (applicationId: number) => {
+    deleteApplicationMutation.mutate(applicationId);
+  };
 
   // Filter applications based on search
   const filteredApplications = applications.filter(app => 
@@ -142,6 +178,39 @@ export default function Dashboard() {
                           {getStatusIcon("in_progress")}
                           <span>In Progress</span>
                         </div>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Delete Audit</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Are you sure you want to delete "{app.auditName}"? This will permanently remove:
+                                <br />• All audit data and configurations
+                                <br />• Question analyses and results  
+                                <br />• Associated files and folders
+                                <br />• This action cannot be undone.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction
+                                onClick={() => handleDeleteApplication(app.id)}
+                                className="bg-red-500 hover:bg-red-600"
+                              >
+                                Delete Permanently
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
                       </div>
                     </div>
                   ))

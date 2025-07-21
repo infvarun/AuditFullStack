@@ -286,6 +286,79 @@ def update_application(application_id):
             cursor.close()
             conn.close()
 
+@app.route('/api/applications/<int:application_id>', methods=['DELETE'])
+def delete_application(application_id):
+    """Delete application and all associated data including files"""
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'error': 'Database connection failed'}), 500
+        
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # First, get application details for folder cleanup
+        cursor.execute("""
+            SELECT name, audit_name, ci_id
+            FROM applications 
+            WHERE id = %s
+        """, (application_id,))
+        
+        application = cursor.fetchone()
+        if not application:
+            return jsonify({'error': 'Application not found'}), 404
+        
+        # Start transaction for complete cleanup
+        cursor.execute("BEGIN;")
+        
+        try:
+            # Delete agent executions
+            cursor.execute("DELETE FROM agent_executions WHERE application_id = %s", (application_id,))
+            
+            # Delete question analyses
+            cursor.execute("DELETE FROM question_analyses WHERE application_id = %s", (application_id,))
+            
+            # Delete data collection sessions
+            cursor.execute("DELETE FROM data_collection_sessions WHERE application_id = %s", (application_id,))
+            
+            # Delete data requests
+            cursor.execute("DELETE FROM data_requests WHERE application_id = %s", (application_id,))
+            
+            # Delete the application
+            cursor.execute("DELETE FROM applications WHERE id = %s", (application_id,))
+            
+            # Commit database changes
+            cursor.execute("COMMIT;")
+            
+            # Clean up file system - remove audit folder
+            import shutil
+            audit_folder_name = f"{application['name']}_{application['ci_id']}_{application_id}"
+            folder_path = os.path.join('uploads', audit_folder_name)
+            
+            if os.path.exists(folder_path):
+                shutil.rmtree(folder_path)
+                print(f"Deleted audit folder: {folder_path}")
+            
+            return jsonify({
+                'success': True,
+                'message': f'Application "{application["audit_name"]}" and all associated data deleted successfully',
+                'deletedApplicationId': application_id,
+                'deletedFolder': audit_folder_name
+            })
+            
+        except Exception as e:
+            # Rollback transaction on error
+            cursor.execute("ROLLBACK;")
+            print(f"Error during deletion transaction: {e}")
+            raise e
+        
+    except Exception as e:
+        print(f"Error deleting application {application_id}: {e}")
+        return jsonify({'error': f'Failed to delete application: {str(e)}'}), 500
+    finally:
+        if conn:
+            cursor.close()
+            conn.close()
+
 # Data requests API
 @app.route('/api/data-requests/application/<int:application_id>', methods=['GET'])
 def get_data_requests(application_id):
