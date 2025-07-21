@@ -109,7 +109,7 @@ export default function StepFour({ applicationId, onNext, setCanProceed }: StepF
 
   // Initialize executions when analyses are loaded
   useEffect(() => {
-    if (analyses.length > 0) {
+    if (analyses.length > 0 && connectors.length >= 0) {
       const initialExecutions: Record<string, AgentExecution> = {};
       
       analyses.forEach(analysis => {
@@ -122,9 +122,19 @@ export default function StepFour({ applicationId, onNext, setCanProceed }: StepF
         };
       });
       
-      setExecutions(initialExecutions);
+      setExecutions(prev => {
+        // Only update if different to prevent infinite loops
+        const prevKeys = Object.keys(prev);
+        const newKeys = Object.keys(initialExecutions);
+        
+        if (prevKeys.length !== newKeys.length || 
+            !prevKeys.every(key => newKeys.includes(key))) {
+          return initialExecutions;
+        }
+        return prev;
+      });
     }
-  }, [analyses, connectors]);
+  }, [analyses.length, connectors.length]);
 
   // Check if we can proceed (all executions completed)
   useEffect(() => {
