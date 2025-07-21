@@ -117,14 +117,54 @@ export default function StepThree({ applicationId, onNext, setCanProceed }: Step
     setCanProceed(hasAnalyses && isSaved);
   }, [analyses, isSaved, setCanProceed]);
 
-  // AI Question Analysis Mutation
+  // AI Question Analysis Mutation with proper progress tracking
   const analyzeQuestionsMutation = useMutation({
     mutationFn: async (questions: Question[]) => {
-      const response = await apiRequest("POST", "/api/questions/analyze", {
-        applicationId,
-        questions: questions
-      });
-      return response.json();
+      const totalQuestions = questions.length;
+      let processedCount = 0;
+      const analyses: any[] = [];
+      
+      // Process questions one by one to show proper progress
+      for (const question of questions) {
+        try {
+          const response = await apiRequest("POST", "/api/questions/analyze", {
+            applicationId,
+            questions: [question] // Send one question at a time
+          });
+          
+          const result = await response.json();
+          if (result.analyses && result.analyses.length > 0) {
+            analyses.push(result.analyses[0]);
+          }
+          
+          processedCount++;
+          const progressPercent = Math.round((processedCount / totalQuestions) * 100);
+          setAnalysisProgress(progressPercent);
+          
+          // Small delay to show progress visually
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+        } catch (error) {
+          console.error(`Error analyzing question ${question.id}:`, error);
+          // Add fallback analysis for failed questions
+          analyses.push({
+            questionId: question.id || '',
+            originalQuestion: question.question || '',
+            category: question.process || 'General',
+            subcategory: question.subProcess || 'Unknown',
+            aiPrompt: `Analyze audit question: ${question.question || ''}`,
+            toolSuggestion: 'sql_server',
+            connectorReason: 'Fallback due to analysis error',
+            connectorToUse: 'sql_server'
+          });
+          
+          processedCount++;
+          const progressPercent = Math.round((processedCount / totalQuestions) * 100);
+          setAnalysisProgress(progressPercent);
+        }
+      }
+      
+      return { analyses, total: analyses.length };
     },
     onSuccess: (data) => {
       setAnalyses(data.analyses || []);
@@ -179,17 +219,7 @@ export default function StepThree({ applicationId, onNext, setCanProceed }: Step
     setIsAnalyzing(true);
     setAnalysisProgress(0);
     
-    // Simulate progress
-    const interval = setInterval(() => {
-      setAnalysisProgress(prev => {
-        if (prev >= 90) {
-          clearInterval(interval);
-          return 90;
-        }
-        return prev + 10;
-      });
-    }, 500);
-
+    // Start analysis without fake progress - real progress will be tracked in mutation
     analyzeQuestionsMutation.mutate(questions);
   };
 
