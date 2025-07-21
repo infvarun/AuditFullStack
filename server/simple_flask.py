@@ -72,7 +72,7 @@ def get_applications():
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         cursor.execute("""
             SELECT id, COALESCE(audit_name, name) as audit_name, ci_id, 
-                   start_date, end_date, created_at 
+                   start_date, end_date, enable_followup_questions, created_at 
             FROM applications 
             ORDER BY created_at DESC
         """)
@@ -85,7 +85,7 @@ def get_applications():
                 'ciId': row['ci_id'],
                 'auditDateFrom': row['start_date'],
                 'auditDateTo': row['end_date'],
-                'enableFollowupQuestions': False,  # Default value
+                'enableFollowupQuestions': row['enable_followup_questions'] or False,
                 'createdAt': row['created_at']
             }
             applications.append(app_data)
@@ -110,16 +110,21 @@ def create_application():
             return jsonify({'error': 'Database connection failed'}), 500
         
         cursor = conn.cursor(cursor_factory=RealDictCursor)
+        # Extract follow-up questions setting
+        settings = data.get('settings', {})
+        enable_followup = settings.get('enableFollowUpQuestions', False)
+        
         cursor.execute("""
-            INSERT INTO applications (name, audit_name, ci_id, start_date, end_date)
-            VALUES (%s, %s, %s, %s, %s)
-            RETURNING id, name, audit_name, ci_id, start_date, end_date, created_at
+            INSERT INTO applications (name, audit_name, ci_id, start_date, end_date, enable_followup_questions)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            RETURNING id, name, audit_name, ci_id, start_date, end_date, enable_followup_questions, created_at
         """, (
             data.get('name') or data['auditName'],  # Use name if provided, otherwise auditName
             data['auditName'],
             data['ciId'],
             data.get('startDate') or data.get('auditDateFrom'),
-            data.get('endDate') or data.get('auditDateTo')
+            data.get('endDate') or data.get('auditDateTo'),
+            enable_followup
         ))
         
         row = cursor.fetchone()
@@ -131,7 +136,7 @@ def create_application():
             'ciId': row['ci_id'],
             'auditDateFrom': row['start_date'],
             'auditDateTo': row['end_date'],
-            'enableFollowupQuestions': False,  # Default value
+            'enableFollowupQuestions': row['enable_followup_questions'],
             'createdAt': row['created_at']
         }
         
@@ -155,7 +160,7 @@ def get_application(application_id):
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         cursor.execute("""
             SELECT id, name, audit_name, ci_id, 
-                   start_date, end_date, created_at 
+                   start_date, end_date, enable_followup_questions, created_at 
             FROM applications 
             WHERE id = %s
         """, (application_id,))
@@ -171,7 +176,7 @@ def get_application(application_id):
             'ciId': row['ci_id'],
             'auditDateFrom': row['start_date'],
             'auditDateTo': row['end_date'],
-            'enableFollowupQuestions': False,  # Default value
+            'enableFollowupQuestions': row['enable_followup_questions'] or False,
             'createdAt': row['created_at']
         }
         
@@ -201,18 +206,23 @@ def update_application(application_id):
         if not cursor.fetchone():
             return jsonify({'error': 'Application not found'}), 404
         
+        # Extract follow-up questions setting
+        settings = data.get('settings', {})
+        enable_followup = settings.get('enableFollowUpQuestions', False)
+        
         # Update the application
         cursor.execute("""
             UPDATE applications 
-            SET name = %s, audit_name = %s, ci_id = %s, start_date = %s, end_date = %s
+            SET name = %s, audit_name = %s, ci_id = %s, start_date = %s, end_date = %s, enable_followup_questions = %s
             WHERE id = %s
-            RETURNING id, name, audit_name, ci_id, start_date, end_date, created_at
+            RETURNING id, name, audit_name, ci_id, start_date, end_date, enable_followup_questions, created_at
         """, (
             data.get('name') or data['auditName'],
             data['auditName'],
             data['ciId'],
             data.get('startDate') or data.get('auditDateFrom'),
             data.get('endDate') or data.get('auditDateTo'),
+            enable_followup,
             application_id
         ))
         
@@ -225,7 +235,7 @@ def update_application(application_id):
             'ciId': row['ci_id'],
             'auditDateFrom': row['start_date'],
             'auditDateTo': row['end_date'],
-            'enableFollowupQuestions': False,  # Default value
+            'enableFollowupQuestions': row['enable_followup_questions'],
             'createdAt': row['created_at']
         }
         
