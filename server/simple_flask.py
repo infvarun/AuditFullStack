@@ -232,6 +232,59 @@ def health_check():
     """Health check endpoint"""
     return jsonify({'status': 'healthy', 'service': 'Simple Flask API'}), 200
 
+# Database health check
+@app.route('/api/database/health', methods=['GET'])
+def database_health():
+    """Database connectivity health check"""
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({
+                'status': 'error',
+                'message': 'Unable to connect to database',
+                'database_url_present': bool(os.getenv('DATABASE_URL')),
+                'error_details': 'Connection failed'
+            }), 500
+        
+        # Test basic query
+        cursor = conn.cursor()
+        cursor.execute('SELECT 1 as test')
+        result = cursor.fetchone()
+        
+        # Get database info
+        cursor.execute('SELECT version() as db_version')
+        db_version = cursor.fetchone()[0]
+        
+        # Check if our tables exist
+        cursor.execute("""
+            SELECT table_name FROM information_schema.tables 
+            WHERE table_schema = 'public' AND table_name IN ('applications', 'data_requests', 'tool_connectors')
+        """)
+        existing_tables = [row[0] for row in cursor.fetchall()]
+        
+        cursor.close()
+        conn.close()
+        
+        return jsonify({
+            'status': 'healthy',
+            'message': 'Database connection successful',
+            'database_url_present': bool(os.getenv('DATABASE_URL')),
+            'connection_test': 'passed',
+            'database_version': db_version,
+            'existing_tables': existing_tables,
+            'tables_count': len(existing_tables),
+            'timestamp': datetime.now().isoformat()
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': 'Database connection failed',
+            'database_url_present': bool(os.getenv('DATABASE_URL')),
+            'error_details': str(e),
+            'timestamp': datetime.now().isoformat()
+        }), 500
+
 # Test data endpoint
 @app.route('/api/test', methods=['GET'])
 def test_endpoint():
