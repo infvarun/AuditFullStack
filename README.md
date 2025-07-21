@@ -35,10 +35,30 @@ DATABASE_URL=postgresql://username:password@host:port/database
 
 **Important**: Keep your API key secure and never commit it to version control.
 
-### 3. Start the Application
+### 3. Install Dependencies
+
+**Install Node.js Dependencies:**
+```bash
+# Install frontend dependencies
+npm install
+```
+
+**Install Python Dependencies:**
+```bash
+# Install Python backend dependencies
+pip install flask flask-cors psycopg2-binary python-dotenv pandas openpyxl xlrd langchain langchain-openai langchain-core
+```
+
+**Alternative using pyproject.toml:**
+```bash
+# Install from pyproject.toml (if using pip with pyproject.toml support)
+pip install -e .
+```
+
+### 4. Start the Application
 
 ```bash
-# Install dependencies and start both servers
+# Start both React and Flask servers
 npm run dev
 ```
 
@@ -46,7 +66,7 @@ This command starts:
 - **React frontend** on `http://localhost:5000`
 - **Flask backend** on `http://localhost:8000`
 
-### 4. Verify Setup
+### 5. Verify Setup
 
 1. Open `http://localhost:5000` in your browser
 2. You should see the CA Audit Agent dashboard
@@ -172,6 +192,40 @@ npm run build
 
 # Start production server
 npm start
+```
+
+### Python Dependencies
+
+The Flask backend requires these Python packages:
+
+**Core Dependencies:**
+```bash
+pip install flask>=2.0.0 flask-cors>=4.0.0
+```
+
+**Database:**
+```bash
+pip install psycopg2-binary>=2.9.0
+```
+
+**AI & Language Processing:**
+```bash
+pip install langchain>=0.3.26 langchain-openai>=0.3.28 langchain-core>=0.3.69
+```
+
+**File Processing:**
+```bash
+pip install pandas>=2.3.1 openpyxl>=3.1.5 xlrd>=2.0.2
+```
+
+**Environment:**
+```bash
+pip install python-dotenv>=1.0.0
+```
+
+**Complete Installation Command:**
+```bash
+pip install flask flask-cors psycopg2-binary python-dotenv pandas openpyxl xlrd langchain langchain-openai langchain-core
 ```
 
 ### Development Workflow
