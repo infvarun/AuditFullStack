@@ -7,8 +7,8 @@ async function throwIfResNotOk(res: Response) {
   }
 }
 
-// Express backend URL
-const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
+// Flask backend URL
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 export async function apiRequest(
   method: string,
