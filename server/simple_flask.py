@@ -1373,9 +1373,10 @@ def test_connector_by_type(connector_type, config):
 def test_sql_server_connection(config, start_time):
     """Test SQL Server database connection"""
     import socket
+    import time
     
     server = config.get('server', '')
-    port = config.get('port', 1433)
+    port = int(config.get('port', 1433))
     database = config.get('database', '')
     
     if not server or not database:
@@ -1420,9 +1421,10 @@ def test_sql_server_connection(config, start_time):
 def test_oracle_connection(config, start_time):
     """Test Oracle database connection"""
     import socket
+    import time
     
     server = config.get('server', '')
-    port = config.get('port', 1521)
+    port = int(config.get('port', 1521))
     service_name = config.get('service_name', config.get('database', ''))
     
     if not server or not service_name:
@@ -1467,6 +1469,7 @@ def test_gnosis_connection(config, start_time):
     """Test Gnosis Document Repository connection"""
     import urllib.request
     import urllib.error
+    import time
     
     server = config.get('server', '')
     api_endpoint = config.get('api_endpoint', '/api/v2/documents')
@@ -1526,6 +1529,7 @@ def test_jira_connection(config, start_time):
     """Test Jira connection"""
     import urllib.request
     import urllib.error
+    import time
     
     server = config.get('server', '')
     project_key = config.get('project_key', '')
@@ -1582,6 +1586,7 @@ def test_qtest_connection(config, start_time):
     """Test QTest connection"""
     import urllib.request
     import urllib.error
+    import time
     
     server = config.get('server', '')
     project_id = config.get('project_id', '')
@@ -1638,6 +1643,7 @@ def test_servicenow_connection(config, start_time):
     """Test ServiceNow connection"""
     import urllib.request
     import urllib.error
+    import time
     
     instance = config.get('instance', '')
     endpoint = config.get('endpoint', 'api/now/table/incident')

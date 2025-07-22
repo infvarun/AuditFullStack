@@ -182,11 +182,14 @@ export default function Settings() {
     },
   });
 
-  // Test connector mutation
+  // Test connector mutation with individual tracking
+  const [testingConnectorId, setTestingConnectorId] = useState<number | null>(null);
+  
   const testConnectorMutation = useMutation({
     mutationFn: async (id: number) => {
+      setTestingConnectorId(id);
       const response = await apiRequest("POST", `/api/connectors/${id}/test`);
-      return response.json();
+      return { id, ...(await response.json()) };
     },
     onSuccess: (data: any) => {
       toast({
@@ -194,6 +197,7 @@ export default function Settings() {
         description: data.message + (data.testDuration ? ` (${data.testDuration.toFixed(2)}s)` : ""),
         variant: data.success ? "default" : "destructive",
       });
+      setTestingConnectorId(null);
       refetchConnectors();
     },
     onError: (error: any) => {
@@ -202,6 +206,7 @@ export default function Settings() {
         description: error.message,
         variant: "destructive",
       });
+      setTestingConnectorId(null);
     },
   });
 
@@ -334,10 +339,10 @@ export default function Settings() {
                               variant="ghost"
                               size="sm"
                               onClick={() => testConnectorMutation.mutate(connector.id)}
-                              disabled={testConnectorMutation.isPending}
+                              disabled={testingConnectorId === connector.id}
                               title="Test connection"
                             >
-                              {testConnectorMutation.isPending ? (
+                              {testingConnectorId === connector.id ? (
                                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
                               ) : (
                                 <CheckCircle className="h-4 w-4" />
