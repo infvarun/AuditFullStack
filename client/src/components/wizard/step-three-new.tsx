@@ -30,9 +30,9 @@ interface QuestionAnalysis {
   category: string;
   subcategory: string;
   aiPrompt: string;
-  toolSuggestion: string;
+  toolSuggestion: string | string[]; // Can be single tool or multiple tools
   connectorReason: string;
-  connectorToUse: string;
+  connectorToUse: string | string[]; // Can be single or multiple connectors
 }
 
 interface ToolConnector {
@@ -115,23 +115,46 @@ export default function StepThree({ applicationId, onNext, setCanProceed }: Step
   // Load existing analyses and convert old tool IDs to new ones
   useEffect(() => {
     if (existingAnalyses && existingAnalyses.length > 0) {
-      const updatedAnalyses = existingAnalyses.map(analysis => ({
-        ...analysis,
-        toolSuggestion: TOOL_ID_MAPPING[analysis.toolSuggestion] || analysis.toolSuggestion,
-        connectorToUse: TOOL_ID_MAPPING[analysis.connectorToUse] || analysis.connectorToUse
-      }));
+      const updatedAnalyses = existingAnalyses.map(analysis => {
+        // Handle both single and multiple tool suggestions
+        let updatedToolSuggestion;
+        if (Array.isArray(analysis.toolSuggestion)) {
+          updatedToolSuggestion = analysis.toolSuggestion.map(tool => TOOL_ID_MAPPING[tool] || tool);
+        } else {
+          updatedToolSuggestion = TOOL_ID_MAPPING[analysis.toolSuggestion] || analysis.toolSuggestion;
+        }
+        
+        let updatedConnectorToUse;
+        if (Array.isArray(analysis.connectorToUse)) {
+          updatedConnectorToUse = analysis.connectorToUse.map(connector => TOOL_ID_MAPPING[connector] || connector);
+        } else {
+          updatedConnectorToUse = TOOL_ID_MAPPING[analysis.connectorToUse] || analysis.connectorToUse;
+        }
+        
+        return {
+          ...analysis,
+          toolSuggestion: updatedToolSuggestion,
+          connectorToUse: updatedConnectorToUse
+        };
+      });
       setAnalyses(updatedAnalyses);
       setIsSaved(true);
       setCanProceed(true);
     }
   }, [existingAnalyses, setCanProceed]);
 
-  // Check if we can proceed
+  // Check if we can proceed - handle both single and multiple tool selections
   useEffect(() => {
     const hasAnalyses = analyses.length > 0;
     const allQuestionsConfigured = analyses.every(analysis => {
-      const connectorExists = connectors.some(c => c.connector_type === analysis.toolSuggestion);
-      return connectorExists && analysis.toolSuggestion && analysis.toolSuggestion.trim() !== '';
+      const toolSuggestions = Array.isArray(analysis.toolSuggestion) 
+        ? analysis.toolSuggestion 
+        : [analysis.toolSuggestion];
+      
+      return toolSuggestions.every(tool => {
+        const connectorExists = connectors.some(c => c.connector_type === (TOOL_ID_MAPPING[tool] || tool));
+        return connectorExists && tool && tool.trim() !== '';
+      });
     });
     setCanProceed(hasAnalyses && allQuestionsConfigured && isSaved);
   }, [analyses, connectors, isSaved, setCanProceed]);
@@ -248,7 +271,7 @@ export default function StepThree({ applicationId, onNext, setCanProceed }: Step
         ? { 
             ...analysis, 
             toolSuggestion: newTool, 
-            connectorToUse: "" // Reset connector selection when tool changes
+            connectorToUse: Array.isArray(analysis.toolSuggestion) ? [] : "" // Reset connector selection when tool changes
           }
         : analysis
     ));
@@ -256,12 +279,16 @@ export default function StepThree({ applicationId, onNext, setCanProceed }: Step
     setIsSaved(false);
   };
 
-  // Simplified since we no longer need connector change handling for single connector per type
+  // Handle connector changes for both single and multiple tool scenarios
   const handleConnectorChange = (questionId: string, connectorName: string, index: number) => {
-    // For single connector architecture, automatically set connectorToUse to the tool type
     setAnalyses(prev => prev.map((analysis, idx) => 
       idx === index 
-        ? { ...analysis, connectorToUse: analysis.toolSuggestion }
+        ? { 
+            ...analysis, 
+            connectorToUse: Array.isArray(analysis.toolSuggestion) 
+              ? analysis.toolSuggestion // For multiple tools, use all tool names
+              : analysis.toolSuggestion // For single tool, use the tool name
+          }
         : analysis
     ));
     setHasUnsavedChanges(true);
@@ -418,8 +445,13 @@ export default function StepThree({ applicationId, onNext, setCanProceed }: Step
           <CardContent>
             <div className="space-y-4">
               {analyses.map((analysis, index) => {
-                const connectorStatus = getConnectorStatus(analysis.toolSuggestion);
-                const ToolIcon = getToolIcon(analysis.toolSuggestion);
+                // Handle status for multiple tools - check if any tool has a connector
+                const hasAnyConnector = Array.isArray(analysis.toolSuggestion) 
+                  ? analysis.toolSuggestion.some(tool => getConnectorStatus(tool).available)
+                  : getConnectorStatus(analysis.toolSuggestion).available;
+                const ToolIcon = Array.isArray(analysis.toolSuggestion) 
+                  ? getToolIcon(analysis.toolSuggestion[0]) 
+                  : getToolIcon(analysis.toolSuggestion);
                 
                 // Create unique key using multiple fields
                 const uniqueKey = `analysis-${applicationId}-${index}-${analysis.questionId || index}-${analysis.originalQuestion?.slice(0, 20) || ''}`;
@@ -457,55 +489,107 @@ export default function StepThree({ applicationId, onNext, setCanProceed }: Step
                         </p>
                       </div>
                       
-                      {/* Tool Selection */}
+                      {/* Tool Selection - Handle both single and multiple tools */}
                       <div>
                         <label className="text-xs font-medium text-slate-500 uppercase tracking-wide">
-                          Tool To Use
+                          Tool(s) To Use
                         </label>
-                        <Select 
-                          value={TOOL_ID_MAPPING[analysis.toolSuggestion] || analysis.toolSuggestion} 
-                          onValueChange={(value) => handleToolChange(analysis.questionId, value, index)}
-                        >
-                          <SelectTrigger className="mt-1">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {AVAILABLE_TOOLS.map(tool => {
-                              const Icon = tool.icon;
-                              return (
-                                <SelectItem key={tool.id} value={tool.id}>
-                                  <div className="flex items-center space-x-2">
-                                    <Icon className="h-4 w-4" />
-                                    <span>{tool.name}</span>
-                                  </div>
-                                </SelectItem>
-                              );
-                            })}
-                          </SelectContent>
-                        </Select>
+                        <div className="mt-1 space-y-2">
+                          {Array.isArray(analysis.toolSuggestion) ? (
+                            // Multiple tools - show as badges
+                            <div className="flex flex-wrap gap-2">
+                              {analysis.toolSuggestion.map((tool, toolIndex) => {
+                                const toolConfig = AVAILABLE_TOOLS.find(t => t.id === tool || t.id === TOOL_ID_MAPPING[tool]);
+                                const Icon = toolConfig?.icon || Database;
+                                const connectorStatus = getConnectorStatus(tool);
+                                
+                                return (
+                                  <Badge 
+                                    key={`${tool}-${toolIndex}`} 
+                                    variant={connectorStatus.available ? "default" : "destructive"}
+                                    className="flex items-center space-x-1 px-3 py-1"
+                                  >
+                                    <Icon className="h-3 w-3" />
+                                    <span className="text-xs">{toolConfig?.name || tool}</span>
+                                  </Badge>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            // Single tool - show as dropdown
+                            <Select 
+                              value={TOOL_ID_MAPPING[analysis.toolSuggestion] || analysis.toolSuggestion} 
+                              onValueChange={(value) => handleToolChange(analysis.questionId, value, index)}
+                            >
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {AVAILABLE_TOOLS.map(tool => {
+                                  const Icon = tool.icon;
+                                  return (
+                                    <SelectItem key={tool.id} value={tool.id}>
+                                      <div className="flex items-center space-x-2">
+                                        <Icon className="h-4 w-4" />
+                                        <span>{tool.name}</span>
+                                      </div>
+                                    </SelectItem>
+                                  );
+                                })}
+                              </SelectContent>
+                            </Select>
+                          )}
+                        </div>
                       </div>
                       
-                      {/* Connector Status */}
+                      {/* Connector Status - Handle multiple tools */}
                       <div>
                         <label className="text-xs font-medium text-slate-500 uppercase tracking-wide">
                           Connector Status
                         </label>
-                        <div className="mt-1">
-                          {connectorStatus.available ? (
-                            <Badge variant="default" className="bg-green-100 text-green-800 border-green-200">
-                              <CheckCircle className="h-3 w-3 mr-1" />
-                              Connected
-                            </Badge>
+                        <div className="mt-1 space-y-1">
+                          {Array.isArray(analysis.toolSuggestion) ? (
+                            // Multiple tools - show status for each
+                            analysis.toolSuggestion.map((tool, toolIndex) => {
+                              const connectorStatus = getConnectorStatus(tool);
+                              return (
+                                <div key={`${tool}-status-${toolIndex}`} className="flex items-center justify-between">
+                                  <span className="text-xs text-slate-600">{getToolName(tool)}:</span>
+                                  {connectorStatus.available ? (
+                                    <Badge variant="default" className="bg-green-100 text-green-800 border-green-200 text-xs">
+                                      <CheckCircle className="h-3 w-3 mr-1" />
+                                      Connected
+                                    </Badge>
+                                  ) : (
+                                    <Badge variant="destructive" className="text-xs">
+                                      <Settings className="h-3 w-3 mr-1" />
+                                      Not Configured
+                                    </Badge>
+                                  )}
+                                </div>
+                              );
+                            })
                           ) : (
-                            <div>
-                              <Badge variant="destructive">
-                                <Settings className="h-3 w-3 mr-1" />
-                                Not Configured
-                              </Badge>
-                              <p className="text-xs text-slate-500 mt-1">
-                                Create {getToolName(analysis.toolSuggestion)} connectors in Settings → CI Connectors
-                              </p>
-                            </div>
+                            // Single tool - show single status
+                            (() => {
+                              const connectorStatus = getConnectorStatus(analysis.toolSuggestion);
+                              return connectorStatus.available ? (
+                                <Badge variant="default" className="bg-green-100 text-green-800 border-green-200">
+                                  <CheckCircle className="h-3 w-3 mr-1" />
+                                  Connected
+                                </Badge>
+                              ) : (
+                                <div>
+                                  <Badge variant="destructive">
+                                    <Settings className="h-3 w-3 mr-1" />
+                                    Not Configured
+                                  </Badge>
+                                  <p className="text-xs text-slate-500 mt-1">
+                                    Create {getToolName(analysis.toolSuggestion)} connectors in Settings → CI Connectors
+                                  </p>
+                                </div>
+                              );
+                            })()
                           )}
                         </div>
                       </div>

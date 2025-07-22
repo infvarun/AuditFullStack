@@ -586,8 +586,10 @@ def analyze_questions_with_ai():
         # Use Langchain with OpenAI for intelligent question analysis
         analyses = []
         
-        # Create Langchain prompt template with better tool selection logic
-        system_template = """You are an expert audit data collection specialist. Analyze each audit question and intelligently determine the most appropriate tool based on the question content and context.
+        # Create Langchain prompt template with multi-tool selection capability
+        system_template = """You are an expert audit data collection specialist. Analyze each audit question and intelligently determine the most appropriate tool(s) based on the question content and context.
+
+IMPORTANT: You can select MULTIPLE tools for a single question when comprehensive data collection is needed.
 
 TOOL SELECTION GUIDELINES:
 - sql_server: Database queries, user data, system logs, transactions, authentication records, access controls
@@ -597,23 +599,24 @@ TOOL SELECTION GUIDELINES:
 - qtest: Quality assurance, test cases, test results, defect tracking, testing documentation
 - service_now: IT service management, incidents, service requests, change management, ITSM processes
 
+MULTI-TOOL SELECTION EXAMPLES:
+- "Review security incident response process" → ["gnosis", "jira", "service_now"] (policies + tickets + incidents)
+- "Audit user access and permissions" → ["sql_server", "oracle_db"] (multiple database systems)
+- "Check compliance documentation and implementation" → ["gnosis", "jira"] (docs + implementation tracking)
+- "Review testing processes and results" → ["qtest", "jira"] (test data + project tracking)
+
 ANALYSIS APPROACH:
 1. Read the question carefully and identify key terms
-2. Match question intent with appropriate data source
-3. Create specific, actionable prompts for data collection agents
-4. Provide clear reasoning for tool selection
-
-Examples:
-- "Review user access controls" → sql_server (database security data)
-- "Find compliance policies" → gnosis (document repository)
-- "Check test coverage" → qtest (testing data)
-- "Review incident handling" → service_now (ITSM data)
+2. Consider if multiple data sources would provide comprehensive coverage
+3. Select one or more tools that together provide complete answer
+4. Create specific, actionable prompts for data collection agents
+5. Provide clear reasoning for tool selection
 
 Respond in JSON format only:
 {{
-  "toolSuggestion": "exact_tool_id_from_list_above",
+  "toolSuggestion": "single_tool_id OR array_of_tool_ids like ['tool1', 'tool2']",
   "aiPrompt": "Create comprehensive, actionable instructions for an AI data collection agent. Include specific search criteria, expected data types, analysis requirements, and deliverable format. Make it detailed enough for autonomous execution.",
-  "connectorReason": "Clear explanation why this tool is the best choice for this specific question",
+  "connectorReason": "Clear explanation why these tool(s) are the best choice for this specific question",
   "category": "Primary audit category (e.g., Security, Compliance, Process, Quality)",
   "subcategory": "Specific audit area within the category"
 }}"""
@@ -649,9 +652,24 @@ Consider the question content carefully and match it to the most suitable data s
                 try:
                     ai_analysis = json.loads(response.content)
                     
-                    # Validate that we have a proper tool suggestion
+                    # Handle both single and multiple tool suggestions
                     valid_tools = ['sql_server', 'oracle_db', 'gnosis', 'jira', 'qtest', 'service_now']
-                    if ai_analysis.get('toolSuggestion') not in valid_tools:
+                    tool_suggestion = ai_analysis.get('toolSuggestion')
+                    
+                    # Check if it's a valid single tool or array of tools
+                    if isinstance(tool_suggestion, list):
+                        # Multiple tools - validate each one
+                        validated_tools = [tool for tool in tool_suggestion if tool in valid_tools]
+                        if not validated_tools:
+                            # If no valid tools in the array, fallback to content analysis
+                            tool_suggestion = None
+                        else:
+                            ai_analysis['toolSuggestion'] = validated_tools
+                    elif tool_suggestion not in valid_tools:
+                        # Single tool but invalid - fallback to content analysis
+                        tool_suggestion = None
+                    
+                    if tool_suggestion is None:
                         # If invalid tool, try to map based on question content
                         question_text = question.get('question', '').lower()
                         if any(term in question_text for term in ['database', 'user', 'access', 'login', 'authentication']):
@@ -696,15 +714,19 @@ Consider the question content carefully and match it to the most suitable data s
                         'connectorReason': f'Selected {tool_suggestion} based on question content analysis'
                     }
                 
+                # Handle connector assignment for both single and multiple tools
+                tool_suggestion = ai_analysis.get('toolSuggestion', 'sql_server')
+                connector_to_use = tool_suggestion if isinstance(tool_suggestion, list) else tool_suggestion
+                
                 analysis = {
                     'questionId': question.get('id', ''),
                     'originalQuestion': question.get('question', ''),
                     'category': ai_analysis.get('category', question.get('process', '')),
                     'subcategory': ai_analysis.get('subcategory', question.get('subProcess', '')),
                     'aiPrompt': ai_analysis.get('aiPrompt', ''),
-                    'toolSuggestion': ai_analysis.get('toolSuggestion', 'sql_server'),
+                    'toolSuggestion': tool_suggestion,
                     'connectorReason': ai_analysis.get('connectorReason', ''),
-                    'connectorToUse': ai_analysis.get('toolSuggestion', 'sql_server')
+                    'connectorToUse': connector_to_use
                 }
                 
                 analyses.append(analysis)
