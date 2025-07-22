@@ -1281,6 +1281,415 @@ def get_connectors_by_ci(ci_id):
             cursor.close()
             conn.close()
 
+@app.route('/api/connectors/<int:connector_id>/test', methods=['POST'])
+def test_connector_connection(connector_id):
+    """Test connector connection and update status"""
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'error': 'Database connection failed'}), 500
+        
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Get connector configuration
+        cursor.execute("""
+            SELECT id, connector_type, configuration, ci_id
+            FROM tool_connectors 
+            WHERE id = %s
+        """, (connector_id,))
+        
+        connector = cursor.fetchone()
+        if not connector:
+            return jsonify({'error': 'Connector not found'}), 404
+        
+        connector_type = connector['connector_type']
+        config = connector['configuration']
+        
+        # Test connection based on connector type
+        test_result = test_connector_by_type(connector_type, config)
+        
+        # Update connector status based on test result
+        new_status = 'active' if test_result['success'] else 'failed'
+        cursor.execute("""
+            UPDATE tool_connectors 
+            SET status = %s
+            WHERE id = %s
+        """, (new_status, connector_id))
+        conn.commit()
+        
+        return jsonify({
+            'success': test_result['success'],
+            'status': new_status,
+            'message': test_result['message'],
+            'details': test_result.get('details', {}),
+            'testDuration': test_result.get('duration', 0)
+        }), 200
+        
+    except Exception as e:
+        # Mark connector as failed on exception
+        if conn:
+            try:
+                cursor.execute("UPDATE tool_connectors SET status = 'failed' WHERE id = %s", (connector_id,))
+                conn.commit()
+            except:
+                pass
+        return jsonify({'error': str(e), 'success': False}), 500
+    finally:
+        if conn:
+            cursor.close()
+            conn.close()
+
+def test_connector_by_type(connector_type, config):
+    """Test connection for specific connector type"""
+    import time
+    start_time = time.time()
+    
+    try:
+        if connector_type == 'SQL Server DB':
+            return test_sql_server_connection(config, start_time)
+        elif connector_type == 'Oracle DB':
+            return test_oracle_connection(config, start_time)
+        elif connector_type == 'Gnosis Document Repository':
+            return test_gnosis_connection(config, start_time)
+        elif connector_type == 'Jira':
+            return test_jira_connection(config, start_time)
+        elif connector_type == 'QTest':
+            return test_qtest_connection(config, start_time)
+        elif connector_type == 'ServiceNow':
+            return test_servicenow_connection(config, start_time)
+        else:
+            return {
+                'success': False,
+                'message': f'Unknown connector type: {connector_type}',
+                'duration': time.time() - start_time
+            }
+    except Exception as e:
+        return {
+            'success': False,
+            'message': f'Connection test failed: {str(e)}',
+            'duration': time.time() - start_time
+        }
+
+def test_sql_server_connection(config, start_time):
+    """Test SQL Server database connection"""
+    import socket
+    
+    server = config.get('server', '')
+    port = config.get('port', 1433)
+    database = config.get('database', '')
+    
+    if not server or not database:
+        return {
+            'success': False,
+            'message': 'Missing required configuration: server and database are required',
+            'duration': time.time() - start_time
+        }
+    
+    # Test network connectivity
+    try:
+        socket.setdefaulttimeout(5)
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        result = sock.connect_ex((server, port))
+        sock.close()
+        
+        if result == 0:
+            return {
+                'success': True,
+                'message': f'Successfully connected to SQL Server {server}:{port}',
+                'details': {
+                    'server': server,
+                    'port': port,
+                    'database': database,
+                    'connectionType': 'network_test'
+                },
+                'duration': time.time() - start_time
+            }
+        else:
+            return {
+                'success': False,
+                'message': f'Cannot connect to SQL Server {server}:{port} - server unreachable',
+                'duration': time.time() - start_time
+            }
+    except Exception as e:
+        return {
+            'success': False,
+            'message': f'SQL Server connection test failed: {str(e)}',
+            'duration': time.time() - start_time
+        }
+
+def test_oracle_connection(config, start_time):
+    """Test Oracle database connection"""
+    import socket
+    
+    server = config.get('server', '')
+    port = config.get('port', 1521)
+    service_name = config.get('service_name', config.get('database', ''))
+    
+    if not server or not service_name:
+        return {
+            'success': False,
+            'message': 'Missing required configuration: server and service_name are required',
+            'duration': time.time() - start_time
+        }
+    
+    try:
+        socket.setdefaulttimeout(5)
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        result = sock.connect_ex((server, port))
+        sock.close()
+        
+        if result == 0:
+            return {
+                'success': True,
+                'message': f'Successfully connected to Oracle {server}:{port}/{service_name}',
+                'details': {
+                    'server': server,
+                    'port': port,
+                    'serviceName': service_name,
+                    'connectionType': 'network_test'
+                },
+                'duration': time.time() - start_time
+            }
+        else:
+            return {
+                'success': False,
+                'message': f'Cannot connect to Oracle {server}:{port} - server unreachable',
+                'duration': time.time() - start_time
+            }
+    except Exception as e:
+        return {
+            'success': False,
+            'message': f'Oracle connection test failed: {str(e)}',
+            'duration': time.time() - start_time
+        }
+
+def test_gnosis_connection(config, start_time):
+    """Test Gnosis Document Repository connection"""
+    import urllib.request
+    import urllib.error
+    
+    server = config.get('server', '')
+    api_endpoint = config.get('api_endpoint', '/api/v2/documents')
+    repository = config.get('repository', '')
+    
+    if not server:
+        return {
+            'success': False,
+            'message': 'Missing required configuration: server is required',
+            'duration': time.time() - start_time
+        }
+    
+    # Construct test URL
+    test_url = f"https://{server}{api_endpoint}"
+    if not server.startswith('http'):
+        test_url = f"https://{server}{api_endpoint}"
+    
+    try:
+        # Test HTTP connectivity with timeout
+        req = urllib.request.Request(test_url, headers={'User-Agent': 'CA-Audit-Agent/1.0'})
+        with urllib.request.urlopen(req, timeout=10) as response:
+            status_code = response.getcode()
+            
+            if status_code in [200, 401, 403]:  # 401/403 means server is reachable but needs auth
+                return {
+                    'success': True,
+                    'message': f'Successfully connected to Gnosis server {server}',
+                    'details': {
+                        'server': server,
+                        'endpoint': api_endpoint,
+                        'repository': repository,
+                        'httpStatus': status_code,
+                        'connectionType': 'http_test'
+                    },
+                    'duration': time.time() - start_time
+                }
+            else:
+                return {
+                    'success': False,
+                    'message': f'Gnosis server returned unexpected status: {status_code}',
+                    'duration': time.time() - start_time
+                }
+    except urllib.error.URLError as e:
+        return {
+            'success': False,
+            'message': f'Cannot connect to Gnosis server {server}: {str(e)}',
+            'duration': time.time() - start_time
+        }
+    except Exception as e:
+        return {
+            'success': False,
+            'message': f'Gnosis connection test failed: {str(e)}',
+            'duration': time.time() - start_time
+        }
+
+def test_jira_connection(config, start_time):
+    """Test Jira connection"""
+    import urllib.request
+    import urllib.error
+    
+    server = config.get('server', '')
+    project_key = config.get('project_key', '')
+    api_version = config.get('api_version', '3')
+    
+    if not server:
+        return {
+            'success': False,
+            'message': 'Missing required configuration: server is required',
+            'duration': time.time() - start_time
+        }
+    
+    # Construct test URL
+    test_url = f"https://{server}/rest/api/{api_version}/serverInfo"
+    
+    try:
+        req = urllib.request.Request(test_url, headers={'User-Agent': 'CA-Audit-Agent/1.0'})
+        with urllib.request.urlopen(req, timeout=10) as response:
+            status_code = response.getcode()
+            
+            if status_code in [200, 401, 403]:
+                return {
+                    'success': True,
+                    'message': f'Successfully connected to Jira server {server}',
+                    'details': {
+                        'server': server,
+                        'projectKey': project_key,
+                        'apiVersion': api_version,
+                        'httpStatus': status_code,
+                        'connectionType': 'http_test'
+                    },
+                    'duration': time.time() - start_time
+                }
+            else:
+                return {
+                    'success': False,
+                    'message': f'Jira server returned unexpected status: {status_code}',
+                    'duration': time.time() - start_time
+                }
+    except urllib.error.URLError as e:
+        return {
+            'success': False,
+            'message': f'Cannot connect to Jira server {server}: {str(e)}',
+            'duration': time.time() - start_time
+        }
+    except Exception as e:
+        return {
+            'success': False,
+            'message': f'Jira connection test failed: {str(e)}',
+            'duration': time.time() - start_time
+        }
+
+def test_qtest_connection(config, start_time):
+    """Test QTest connection"""
+    import urllib.request
+    import urllib.error
+    
+    server = config.get('server', '')
+    project_id = config.get('project_id', '')
+    api_version = config.get('api_version', 'v3')
+    
+    if not server:
+        return {
+            'success': False,
+            'message': 'Missing required configuration: server is required',
+            'duration': time.time() - start_time
+        }
+    
+    # Construct test URL
+    test_url = f"https://{server}/api/{api_version}/projects/{project_id}" if project_id else f"https://{server}/api/{api_version}/projects"
+    
+    try:
+        req = urllib.request.Request(test_url, headers={'User-Agent': 'CA-Audit-Agent/1.0'})
+        with urllib.request.urlopen(req, timeout=10) as response:
+            status_code = response.getcode()
+            
+            if status_code in [200, 401, 403]:
+                return {
+                    'success': True,
+                    'message': f'Successfully connected to QTest server {server}',
+                    'details': {
+                        'server': server,
+                        'projectId': project_id,
+                        'apiVersion': api_version,
+                        'httpStatus': status_code,
+                        'connectionType': 'http_test'
+                    },
+                    'duration': time.time() - start_time
+                }
+            else:
+                return {
+                    'success': False,
+                    'message': f'QTest server returned unexpected status: {status_code}',
+                    'duration': time.time() - start_time
+                }
+    except urllib.error.URLError as e:
+        return {
+            'success': False,
+            'message': f'Cannot connect to QTest server {server}: {str(e)}',
+            'duration': time.time() - start_time
+        }
+    except Exception as e:
+        return {
+            'success': False,
+            'message': f'QTest connection test failed: {str(e)}',
+            'duration': time.time() - start_time
+        }
+
+def test_servicenow_connection(config, start_time):
+    """Test ServiceNow connection"""
+    import urllib.request
+    import urllib.error
+    
+    instance = config.get('instance', '')
+    endpoint = config.get('endpoint', 'api/now/table/incident')
+    version = config.get('version', 'v1')
+    
+    if not instance:
+        return {
+            'success': False,
+            'message': 'Missing required configuration: instance is required',
+            'duration': time.time() - start_time
+        }
+    
+    # Construct test URL
+    test_url = f"https://{instance}/{endpoint}"
+    
+    try:
+        req = urllib.request.Request(test_url, headers={'User-Agent': 'CA-Audit-Agent/1.0'})
+        with urllib.request.urlopen(req, timeout=10) as response:
+            status_code = response.getcode()
+            
+            if status_code in [200, 401, 403]:
+                return {
+                    'success': True,
+                    'message': f'Successfully connected to ServiceNow instance {instance}',
+                    'details': {
+                        'instance': instance,
+                        'endpoint': endpoint,
+                        'version': version,
+                        'httpStatus': status_code,
+                        'connectionType': 'http_test'
+                    },
+                    'duration': time.time() - start_time
+                }
+            else:
+                return {
+                    'success': False,
+                    'message': f'ServiceNow instance returned unexpected status: {status_code}',
+                    'duration': time.time() - start_time
+                }
+    except urllib.error.URLError as e:
+        return {
+            'success': False,
+            'message': f'Cannot connect to ServiceNow instance {instance}: {str(e)}',
+            'duration': time.time() - start_time
+        }
+    except Exception as e:
+        return {
+            'success': False,
+            'message': f'ServiceNow connection test failed: {str(e)}',
+            'duration': time.time() - start_time
+        }
+
 @app.route('/api/database/health', methods=['GET'])
 def database_health_check():
     """Check database connectivity and status"""

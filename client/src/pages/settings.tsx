@@ -154,6 +154,29 @@ export default function Settings() {
     },
   });
 
+  // Test connector mutation
+  const testConnectorMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const response = await apiRequest("POST", `/api/connectors/${id}/test`);
+      return response.json();
+    },
+    onSuccess: (data: any) => {
+      toast({
+        title: data.success ? "Connection successful" : "Connection failed",
+        description: data.message + (data.testDuration ? ` (${data.testDuration.toFixed(2)}s)` : ""),
+        variant: data.success ? "default" : "destructive",
+      });
+      refetchConnectors();
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Connection test failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   // Get unique CI IDs from applications
   const uniqueCiIds = (applications as any[])?.map((app: any) => app.ciId).filter((value: string, index: number, self: string[]) => self.indexOf(value) === index) || [];
   const filteredCiIds = uniqueCiIds.filter((ciId: string) => ciId.toLowerCase().includes(searchTerm.toLowerCase()));
@@ -269,13 +292,29 @@ export default function Settings() {
                             <div>
                               <h3 className="font-medium">{config?.name}</h3>
                               <p className="text-sm text-slate-500">
-                                Status: <Badge variant={connector.status === 'active' ? 'default' : 'secondary'}>
+                                Status: <Badge variant={
+                                  connector.status === 'active' ? 'default' :
+                                  connector.status === 'failed' ? 'destructive' : 'secondary'
+                                }>
                                   {connector.status}
                                 </Badge>
                               </p>
                             </div>
                           </div>
                           <div className="flex items-center space-x-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => testConnectorMutation.mutate(connector.id)}
+                              disabled={testConnectorMutation.isPending}
+                              title="Test connection"
+                            >
+                              {testConnectorMutation.isPending ? (
+                                <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                              ) : (
+                                <CheckCircle className="h-4 w-4" />
+                              )}
+                            </Button>
                             <Button
                               variant="ghost"
                               size="sm"
