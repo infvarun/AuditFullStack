@@ -1100,6 +1100,243 @@ def get_agent_executions(application_id):
             cursor.close()
             conn.close()
 
+# Tool Connectors API for Settings page
+@app.route('/api/connectors', methods=['POST'])
+def create_tool_connector():
+    """Create new tool connector"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+
+        # Find application by CI ID
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'error': 'Database connection failed'}), 500
+        
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute("SELECT id FROM applications WHERE ci_id = %s LIMIT 1", (data.get('ciId'),))
+        app_row = cursor.fetchone()
+        
+        if not app_row:
+            return jsonify({'error': f'No application found for CI ID: {data.get("ciId")}'}), 404
+        
+        application_id = app_row['id']
+        
+        # Insert tool connector
+        cursor.execute("""
+            INSERT INTO tool_connectors (application_id, ci_id, connector_type, configuration, status)
+            VALUES (%s, %s, %s, %s, %s)
+            RETURNING id, application_id, ci_id, connector_type, configuration, status, created_at
+        """, (
+            application_id,
+            data.get('ciId'),
+            data.get('connectorType'),
+            json.dumps(data.get('configuration', {})),
+            data.get('status', 'pending')
+        ))
+        
+        row = cursor.fetchone()
+        conn.commit()
+        
+        connector_data = {
+            'id': row['id'],
+            'applicationId': row['application_id'],
+            'ciId': row['ci_id'],
+            'connectorType': row['connector_type'],
+            'configuration': row['configuration'],
+            'status': row['status'],
+            'createdAt': row['created_at']
+        }
+        
+        return jsonify(connector_data), 201
+        
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if conn:
+            cursor.close()
+            conn.close()
+
+@app.route('/api/connectors/<int:connector_id>', methods=['PUT'])
+def update_tool_connector(connector_id):
+    """Update existing tool connector"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'error': 'Database connection failed'}), 500
+        
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Update tool connector
+        cursor.execute("""
+            UPDATE tool_connectors 
+            SET connector_type = %s, configuration = %s, status = %s
+            WHERE id = %s
+            RETURNING id, application_id, ci_id, connector_type, configuration, status, created_at
+        """, (
+            data.get('connectorType'),
+            json.dumps(data.get('configuration', {})),
+            data.get('status', 'pending'),
+            connector_id
+        ))
+        
+        row = cursor.fetchone()
+        if not row:
+            return jsonify({'error': 'Connector not found'}), 404
+            
+        conn.commit()
+        
+        connector_data = {
+            'id': row['id'],
+            'applicationId': row['application_id'],
+            'ciId': row['ci_id'],
+            'connectorType': row['connector_type'],
+            'configuration': row['configuration'],
+            'status': row['status'],
+            'createdAt': row['created_at']
+        }
+        
+        return jsonify(connector_data), 200
+        
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if conn:
+            cursor.close()
+            conn.close()
+
+@app.route('/api/connectors/<int:connector_id>', methods=['DELETE'])
+def delete_tool_connector(connector_id):
+    """Delete tool connector"""
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'error': 'Database connection failed'}), 500
+        
+        cursor = conn.cursor()
+        
+        # Delete tool connector
+        cursor.execute("DELETE FROM tool_connectors WHERE id = %s", (connector_id,))
+        
+        if cursor.rowcount == 0:
+            return jsonify({'error': 'Connector not found'}), 404
+            
+        conn.commit()
+        
+        return jsonify({'success': True, 'message': 'Connector deleted successfully'}), 200
+        
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if conn:
+            cursor.close()
+            conn.close()
+
+@app.route('/api/connectors/ci/<ci_id>', methods=['GET'])
+def get_connectors_by_ci(ci_id):
+    """Get tool connectors for specific CI ID"""
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'error': 'Database connection failed'}), 500
+        
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute("""
+            SELECT id, application_id, ci_id, connector_type, configuration, status, created_at
+            FROM tool_connectors 
+            WHERE ci_id = %s
+            ORDER BY created_at DESC
+        """, (ci_id,))
+        
+        connectors = []
+        for row in cursor.fetchall():
+            connector_data = {
+                'id': row['id'],
+                'applicationId': row['application_id'],
+                'ciId': row['ci_id'],
+                'connectorType': row['connector_type'],
+                'configuration': row['configuration'],
+                'status': row['status'],
+                'createdAt': row['created_at']
+            }
+            connectors.append(connector_data)
+        
+        return jsonify(connectors), 200
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if conn:
+            cursor.close()
+            conn.close()
+
+@app.route('/api/database/health', methods=['GET'])
+def database_health_check():
+    """Check database connectivity and status"""
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({
+                'status': 'error',
+                'connection': False,
+                'message': 'Failed to connect to database'
+            }), 500
+        
+        cursor = conn.cursor()
+        
+        # Test basic query
+        cursor.execute("SELECT NOW() as current_time")
+        result = cursor.fetchone()
+        
+        # Get table count
+        cursor.execute("""
+            SELECT COUNT(*) as table_count 
+            FROM information_schema.tables 
+            WHERE table_schema = 'public'
+        """)
+        table_count = cursor.fetchone()[0]
+        
+        # Get record counts for main tables
+        cursor.execute("SELECT COUNT(*) FROM applications")
+        apps_count = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM tool_connectors")
+        connectors_count = cursor.fetchone()[0]
+        
+        return jsonify({
+            'status': 'healthy',
+            'connection': True,
+            'message': 'Database connection successful',
+            'details': {
+                'currentTime': str(result[0]),
+                'tableCount': table_count,
+                'applicationCount': apps_count,
+                'connectorCount': connectors_count
+            }
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'connection': False,
+            'message': str(e)
+        }), 500
+    finally:
+        if conn:
+            cursor.close()
+            conn.close()
+
 if __name__ == '__main__':
     print("🐍 Starting Simple Flask API server...")
     print("📡 CORS enabled for React frontend at http://localhost:5000")
