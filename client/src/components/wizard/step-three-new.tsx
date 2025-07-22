@@ -493,6 +493,11 @@ export default function StepThree({ applicationId, onNext, setCanProceed }: Step
                       <div>
                         <label className="text-xs font-medium text-slate-500 uppercase tracking-wide">
                           Specific Connector
+                          {connectorStatus.available && (
+                            <Badge variant="outline" className="ml-2 text-xs">
+                              {connectorStatus.count} available
+                            </Badge>
+                          )}
                         </label>
                         <div className="mt-1">
                           {connectorStatus.available ? (
@@ -509,6 +514,9 @@ export default function StepThree({ applicationId, onNext, setCanProceed }: Step
                                     <div className="flex items-center space-x-2">
                                       <CheckCircle className="h-4 w-4 text-green-600" />
                                       <span>{connector.connectorName}</span>
+                                      <Badge variant="outline" className="text-xs">
+                                        {connector.status}
+                                      </Badge>
                                     </div>
                                   </SelectItem>
                                 ))}
@@ -518,10 +526,10 @@ export default function StepThree({ applicationId, onNext, setCanProceed }: Step
                             <div>
                               <Badge variant="destructive">
                                 <Settings className="h-3 w-3 mr-1" />
-                                Not Configured
+                                No {getToolName(analysis.toolSuggestion)} Connectors
                               </Badge>
                               <p className="text-xs text-slate-500 mt-1">
-                                Configure in Settings → CI Connectors
+                                Create {getToolName(analysis.toolSuggestion)} connectors in Settings → CI Connectors
                               </p>
                             </div>
                           )}

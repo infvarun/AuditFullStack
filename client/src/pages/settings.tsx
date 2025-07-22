@@ -328,14 +328,17 @@ export default function Settings() {
                             {config?.icon}
                             <div>
                               <h3 className="font-medium">{connector.connectorName || config?.name}</h3>
-                              <p className="text-sm text-slate-500">
-                                {config?.name} • Status: <Badge variant={
+                              <div className="text-sm text-slate-500 flex items-center space-x-2">
+                                <span>{config?.name}</span>
+                                <span>•</span>
+                                <span>Status:</span>
+                                <Badge variant={
                                   connector.status === 'active' ? 'default' :
                                   connector.status === 'failed' ? 'destructive' : 'secondary'
                                 }>
                                   {connector.status}
                                 </Badge>
-                              </p>
+                              </div>
                             </div>
                           </div>
                           <div className="flex items-center space-x-2">
