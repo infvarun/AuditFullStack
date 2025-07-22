@@ -107,6 +107,7 @@ export default function Settings() {
   const [editingConnector, setEditingConnector] = useState<any>(null);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [selectedConnectorType, setSelectedConnectorType] = useState("");
+  const [connectorName, setConnectorName] = useState("");
   const [formData, setFormData] = useState<Record<string, string>>({});
   const [activeMenuItem, setActiveMenuItem] = useState("connectors");
 
@@ -217,6 +218,7 @@ export default function Settings() {
   const handleCreateConnector = () => {
     setEditingConnector(null);
     setSelectedConnectorType("");
+    setConnectorName("");
     setFormData({});
     setIsCreateDialogOpen(true);
   };
@@ -224,16 +226,18 @@ export default function Settings() {
   const handleEditConnector = (connector: any) => {
     setEditingConnector(connector);
     setSelectedConnectorType(connector.connectorType);
+    setConnectorName(connector.connectorName || "");
     setFormData(connector.configuration || {});
     setIsCreateDialogOpen(true);
   };
 
   const handleSaveConnector = () => {
-    if (!selectedCi || !selectedConnectorType) return;
+    if (!selectedCi || !selectedConnectorType || !connectorName) return;
 
     const connectorData = {
       ciId: selectedCi,
       connectorType: selectedConnectorType,
+      connectorName: connectorName,
       configuration: formData,
     };
 
@@ -323,9 +327,9 @@ export default function Settings() {
                           <div className="flex items-center space-x-3">
                             {config?.icon}
                             <div>
-                              <h3 className="font-medium">{config?.name}</h3>
+                              <h3 className="font-medium">{connector.connectorName || config?.name}</h3>
                               <p className="text-sm text-slate-500">
-                                Status: <Badge variant={
+                                {config?.name} • Status: <Badge variant={
                                   connector.status === 'active' ? 'default' :
                                   connector.status === 'failed' ? 'destructive' : 'secondary'
                                 }>
@@ -632,6 +636,25 @@ export default function Settings() {
                 </Select>
               </div>
 
+              {selectedConnectorType && (
+                <div>
+                  <Label htmlFor="connectorName">
+                    Connector Name
+                    <span className="text-red-500 ml-1">*</span>
+                  </Label>
+                  <Input
+                    id="connectorName"
+                    type="text"
+                    placeholder="e.g., Production SQL Server, HR Oracle DB"
+                    value={connectorName}
+                    onChange={(e) => setConnectorName(e.target.value)}
+                  />
+                  <p className="text-xs text-slate-500 mt-1">
+                    Give this connector a descriptive name to distinguish it from others of the same type
+                  </p>
+                </div>
+              )}
+
               {selectedConnectorConfig && (
                 <div className="space-y-4">
                   <h4 className="font-medium">Configuration</h4>
@@ -659,7 +682,7 @@ export default function Settings() {
                 </Button>
                 <Button 
                   onClick={handleSaveConnector}
-                  disabled={!selectedConnectorType || saveConnectorMutation.isPending}
+                  disabled={!selectedConnectorType || !connectorName || saveConnectorMutation.isPending}
                 >
                   {saveConnectorMutation.isPending ? "Saving..." : editingConnector ? "Update" : "Create"}
                 </Button>

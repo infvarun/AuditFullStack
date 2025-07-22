@@ -1123,14 +1123,20 @@ def create_tool_connector():
         
         application_id = app_row['id']
         
+        # Get connector name from data, or generate default
+        connector_name = data.get('connectorName')
+        if not connector_name:
+            connector_name = f"{data.get('connectorType', 'Unknown')} - {application_id}"
+        
         # Insert tool connector
         cursor.execute("""
-            INSERT INTO tool_connectors (application_id, ci_id, connector_type, configuration, status)
-            VALUES (%s, %s, %s, %s, %s)
-            RETURNING id, application_id, ci_id, connector_type, configuration, status, created_at
+            INSERT INTO tool_connectors (application_id, ci_id, connector_name, connector_type, configuration, status)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            RETURNING id, application_id, ci_id, connector_name, connector_type, configuration, status, created_at
         """, (
             application_id,
             data.get('ciId'),
+            connector_name,
             data.get('connectorType'),
             json.dumps(data.get('configuration', {})),
             data.get('status', 'pending')
@@ -1143,6 +1149,7 @@ def create_tool_connector():
             'id': row['id'],
             'applicationId': row['application_id'],
             'ciId': row['ci_id'],
+            'connectorName': row['connector_name'],
             'connectorType': row['connector_type'],
             'configuration': row['configuration'],
             'status': row['status'],
@@ -1253,7 +1260,7 @@ def get_connectors_by_ci(ci_id):
         
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         cursor.execute("""
-            SELECT id, application_id, ci_id, connector_type, configuration, status, created_at
+            SELECT id, application_id, ci_id, connector_name, connector_type, configuration, status, created_at
             FROM tool_connectors 
             WHERE ci_id = %s
             ORDER BY created_at DESC
@@ -1265,6 +1272,7 @@ def get_connectors_by_ci(ci_id):
                 'id': row['id'],
                 'applicationId': row['application_id'],
                 'ciId': row['ci_id'],
+                'connectorName': row['connector_name'],
                 'connectorType': row['connector_type'],
                 'configuration': row['configuration'],
                 'status': row['status'],
