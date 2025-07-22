@@ -52,6 +52,16 @@ const AVAILABLE_TOOLS = [
   { id: 'ServiceNow', name: 'ServiceNow', icon: Wrench },
 ];
 
+// Map old tool IDs to new ones for backward compatibility
+const TOOL_ID_MAPPING: Record<string, string> = {
+  'sql_server': 'SQL Server DB',
+  'oracle_db': 'Oracle DB', 
+  'gnosis': 'Gnosis Document Repository',
+  'jira': 'Jira',
+  'qtest': 'QTest',
+  'service_now': 'ServiceNow',
+};
+
 export default function StepThree({ applicationId, onNext, setCanProceed }: StepThreeProps) {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [analyses, setAnalyses] = useState<QuestionAnalysis[]>([]);
@@ -102,10 +112,15 @@ export default function StepThree({ applicationId, onNext, setCanProceed }: Step
     }
   }, [dataRequests]);
 
-  // Load existing analyses
+  // Load existing analyses and convert old tool IDs to new ones
   useEffect(() => {
     if (existingAnalyses && existingAnalyses.length > 0) {
-      setAnalyses(existingAnalyses);
+      const updatedAnalyses = existingAnalyses.map(analysis => ({
+        ...analysis,
+        toolSuggestion: TOOL_ID_MAPPING[analysis.toolSuggestion] || analysis.toolSuggestion,
+        connectorToUse: TOOL_ID_MAPPING[analysis.connectorToUse] || analysis.connectorToUse
+      }));
+      setAnalyses(updatedAnalyses);
       setIsSaved(true);
       setCanProceed(true);
     }
@@ -426,7 +441,7 @@ export default function StepThree({ applicationId, onNext, setCanProceed }: Step
                           Tool To Use
                         </label>
                         <Select 
-                          value={analysis.toolSuggestion} 
+                          value={TOOL_ID_MAPPING[analysis.toolSuggestion] || analysis.toolSuggestion} 
                           onValueChange={(value) => handleToolChange(analysis.questionId, value, index)}
                         >
                           <SelectTrigger className="mt-1">

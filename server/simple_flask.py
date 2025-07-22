@@ -806,19 +806,19 @@ def analyze_questions():
         analyzed_questions = []
         for q in questions:
             analyzed_q = {
-                'id': q.get('id', ''),
+                'questionId': q.get('id', q.get('questionNumber', f'Q{len(analyzed_questions)+1}')),
                 'originalQuestion': q.get('question', ''),
                 'category': q.get('process', 'General'),
                 'subcategory': q.get('subProcess', ''),
-                'prompt': f"Analyze the following audit question and provide detailed guidance: {q.get('question', '')}",
-                'toolSuggestion': 'sql_server',  # Default suggestion
+                'aiPrompt': f"Analyze the following audit question and provide detailed guidance: {q.get('question', '')}",
+                'toolSuggestion': 'SQL Server DB',  # Updated to new format
                 'connectorReason': 'This question requires database analysis to verify compliance.',
-                'connectorToUse': 'sql_server'
+                'connectorToUse': 'SQL Server DB'  # Updated to new format
             }
             analyzed_questions.append(analyzed_q)
         
         return jsonify({
-            'questions': analyzed_questions,
+            'analyses': analyzed_questions,
             'totalQuestions': len(analyzed_questions)
         }), 200
         
