@@ -272,3 +272,14 @@ The application follows a pure separation architecture with React frontend and P
 - **✓ Added OpenAI API key setup instructions** with step-by-step guide for obtaining and configuring keys
 - **✓ Documented complete project structure** including all components, API endpoints, and database schema
 - **✓ Added troubleshooting section** with common issues and solutions for developers
+
+### July 22, 2025 - Multi-Connector Architecture Rollback
+- **✓ Rolled back multi-connector implementation** to simplify prototype architecture
+- **✓ Removed connector_name field** from tool_connectors database table and related code
+- **✓ Restored unique constraint** enforcing single connector per tool type per CI
+- **✓ Cleaned up duplicate connectors** preserving one connector of each type per CI
+- **✓ Simplified Step 3 UI** to show only tool selection and connector status (available/not configured)
+- **✓ Updated frontend state management** removing complex two-tier connector selection logic
+- **✓ Maintained backward compatibility** with existing question analyses and tool suggestions
+- **✓ Fixed TypeScript errors** and simplified connector status checking functions
+- **✓ Reduced architectural complexity** for better prototype development and user testing

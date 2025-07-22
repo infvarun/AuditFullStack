@@ -37,10 +37,10 @@ interface QuestionAnalysis {
 
 interface ToolConnector {
   id: number;
-  name: string;
-  type: string;
+  connector_type: string;
   ciId: string;
-  config: any;
+  configuration: any;
+  status: string;
 }
 
 const AVAILABLE_TOOLS = [
@@ -73,7 +73,7 @@ export default function StepThree({ applicationId, onNext, setCanProceed }: Step
   const { toast } = useToast();
 
   // Get application data
-  const { data: applicationData } = useQuery({
+  const { data: applicationData } = useQuery<any>({
     queryKey: [`/api/applications/${applicationId}`],
     enabled: !!applicationId,
   });
@@ -126,12 +126,12 @@ export default function StepThree({ applicationId, onNext, setCanProceed }: Step
     }
   }, [existingAnalyses, setCanProceed]);
 
-  // Check if we can proceed - now requires both tool selection and specific connector selection
+  // Check if we can proceed
   useEffect(() => {
     const hasAnalyses = analyses.length > 0;
     const allQuestionsConfigured = analyses.every(analysis => {
-      const connectorStatus = getConnectorStatus(analysis.toolSuggestion);
-      return connectorStatus.available && analysis.connectorToUse && analysis.connectorToUse.trim() !== '';
+      const connectorExists = connectors.some(c => c.connector_type === analysis.toolSuggestion);
+      return connectorExists && analysis.toolSuggestion && analysis.toolSuggestion.trim() !== '';
     });
     setCanProceed(hasAnalyses && allQuestionsConfigured && isSaved);
   }, [analyses, connectors, isSaved, setCanProceed]);
@@ -256,27 +256,23 @@ export default function StepThree({ applicationId, onNext, setCanProceed }: Step
     setIsSaved(false);
   };
 
+  // Simplified since we no longer need connector change handling for single connector per type
   const handleConnectorChange = (questionId: string, connectorName: string, index: number) => {
+    // For single connector architecture, automatically set connectorToUse to the tool type
     setAnalyses(prev => prev.map((analysis, idx) => 
       idx === index 
-        ? { ...analysis, connectorToUse: connectorName }
+        ? { ...analysis, connectorToUse: analysis.toolSuggestion }
         : analysis
     ));
     setHasUnsavedChanges(true);
     setIsSaved(false);
   };
 
-  const getConnectorsByType = (toolType: string) => {
-    // Get all connectors for this tool type
-    return connectors.filter(c => c.connectorType === toolType);
-  };
-
   const getConnectorStatus = (toolType: string) => {
-    const typeConnectors = getConnectorsByType(toolType);
+    const connector = connectors.find(c => c.connector_type === toolType);
     return { 
-      available: typeConnectors.length > 0, 
-      connectors: typeConnectors,
-      count: typeConnectors.length 
+      available: !!connector, 
+      status: connector?.status || 'not_configured'
     };
   };
 
@@ -489,44 +485,22 @@ export default function StepThree({ applicationId, onNext, setCanProceed }: Step
                         </Select>
                       </div>
                       
-                      {/* Connector Selection */}
+                      {/* Connector Status */}
                       <div>
                         <label className="text-xs font-medium text-slate-500 uppercase tracking-wide">
-                          Specific Connector
-                          {connectorStatus.available && (
-                            <Badge variant="outline" className="ml-2 text-xs">
-                              {connectorStatus.count} available
-                            </Badge>
-                          )}
+                          Connector Status
                         </label>
                         <div className="mt-1">
                           {connectorStatus.available ? (
-                            <Select 
-                              value={analysis.connectorToUse} 
-                              onValueChange={(value) => handleConnectorChange(analysis.questionId, value, index)}
-                            >
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select connector" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {connectorStatus.connectors.map(connector => (
-                                  <SelectItem key={connector.id} value={connector.connectorName}>
-                                    <div className="flex items-center space-x-2">
-                                      <CheckCircle className="h-4 w-4 text-green-600" />
-                                      <span>{connector.connectorName}</span>
-                                      <Badge variant="outline" className="text-xs">
-                                        {connector.status}
-                                      </Badge>
-                                    </div>
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                            <Badge variant="default" className="bg-green-100 text-green-800 border-green-200">
+                              <CheckCircle className="h-3 w-3 mr-1" />
+                              Connected
+                            </Badge>
                           ) : (
                             <div>
                               <Badge variant="destructive">
                                 <Settings className="h-3 w-3 mr-1" />
-                                No {getToolName(analysis.toolSuggestion)} Connectors
+                                Not Configured
                               </Badge>
                               <p className="text-xs text-slate-500 mt-1">
                                 Create {getToolName(analysis.toolSuggestion)} connectors in Settings → CI Connectors
