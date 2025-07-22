@@ -44,12 +44,12 @@ interface ToolConnector {
 }
 
 const AVAILABLE_TOOLS = [
-  { id: 'sql_server', name: 'SQL Server DB', icon: Database },
-  { id: 'oracle_db', name: 'Oracle DB', icon: Database },
-  { id: 'gnosis', name: 'Gnosis Document Repository', icon: FileText },
-  { id: 'jira', name: 'Jira', icon: Bug },
-  { id: 'qtest', name: 'QTest', icon: TestTube },
-  { id: 'service_now', name: 'Service Now', icon: Wrench },
+  { id: 'SQL Server DB', name: 'SQL Server DB', icon: Database },
+  { id: 'Oracle DB', name: 'Oracle DB', icon: Database },
+  { id: 'Gnosis Document Repository', name: 'Gnosis Document Repository', icon: FileText },
+  { id: 'Jira', name: 'Jira', icon: Bug },
+  { id: 'QTest', name: 'QTest', icon: TestTube },
+  { id: 'ServiceNow', name: 'ServiceNow', icon: Wrench },
 ];
 
 export default function StepThree({ applicationId, onNext, setCanProceed }: StepThreeProps) {
@@ -153,9 +153,9 @@ export default function StepThree({ applicationId, onNext, setCanProceed }: Step
             category: question.process || 'General',
             subcategory: question.subProcess || 'Unknown',
             aiPrompt: `Analyze audit question: ${question.question || ''}`,
-            toolSuggestion: 'sql_server',
+            toolSuggestion: 'SQL Server DB',
             connectorReason: 'Fallback due to analysis error',
-            connectorToUse: 'sql_server'
+            connectorToUse: 'SQL Server DB'
           });
           
           processedCount++;
@@ -234,7 +234,8 @@ export default function StepThree({ applicationId, onNext, setCanProceed }: Step
   };
 
   const getConnectorStatus = (toolType: string) => {
-    const connector = connectors.find(c => c.type === toolType);
+    // Map tool IDs to connector types that might be stored in the database
+    const connector = connectors.find(c => c.connectorType === toolType);
     return connector ? { available: true, connector } : { available: false, connector: null };
   };
 
