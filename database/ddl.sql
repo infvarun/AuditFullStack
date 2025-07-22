@@ -50,10 +50,12 @@ CREATE TABLE tool_connectors (
     id SERIAL PRIMARY KEY,
     application_id INTEGER REFERENCES applications(id) ON DELETE CASCADE,
     ci_id TEXT NOT NULL,
-    connector_type TEXT NOT NULL,
+    connector_name TEXT NOT NULL,                -- Human-readable name like "Production SQL Server", "Dev Oracle DB"
+    connector_type TEXT NOT NULL,               -- Type like "SQL Server DB", "Oracle DB"
     configuration JSON NOT NULL,
     status TEXT DEFAULT 'pending',
-    created_at TIMESTAMP DEFAULT now()
+    created_at TIMESTAMP DEFAULT now(),
+    UNIQUE(ci_id, connector_name)              -- Allow multiple connectors per type, but unique names per CI
 );
 
 -- Question Analyses: AI-powered question analysis results
@@ -67,7 +69,8 @@ CREATE TABLE question_analyses (
     ai_prompt TEXT NOT NULL,
     tool_suggestion TEXT NOT NULL,
     connector_reason TEXT NOT NULL,
-    connector_to_use TEXT NOT NULL,
+    connector_to_use TEXT NOT NULL,                -- Now stores specific connector name, not just type
+    connector_id INTEGER,                       -- Reference to specific connector
     created_at TIMESTAMP DEFAULT now(),
     UNIQUE(application_id, question_id)
 );
