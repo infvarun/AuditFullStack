@@ -1428,6 +1428,47 @@ def save_question_answer():
             cursor.close()
             conn.close()
 
+@app.route('/api/questions/answers/<int:application_id>', methods=['GET'])
+def get_question_answers(application_id):
+    """Get all saved answers for an application"""
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'error': 'Database connection failed'}), 500
+        
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        cursor.execute("""
+            SELECT question_id, answer, findings, risk_level, compliance_status, 
+                   data_points, execution_details, created_at, updated_at
+            FROM question_answers 
+            WHERE application_id = %s
+            ORDER BY created_at DESC
+        """, (application_id,))
+        
+        answers = []
+        for row in cursor.fetchall():
+            answers.append({
+                'questionId': row['question_id'],
+                'answer': row['answer'],
+                'findings': row['findings'],
+                'riskLevel': row['risk_level'],
+                'complianceStatus': row['compliance_status'],
+                'dataPoints': row['data_points'],
+                'executionDetails': row['execution_details'],
+                'createdAt': row['created_at'].isoformat() if row['created_at'] else None,
+                'updatedAt': row['updated_at'].isoformat() if row['updated_at'] else None
+            })
+        
+        return jsonify(answers), 200
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if 'conn' in locals() and conn:
+            cursor.close()
+            conn.close()
+
 @app.route('/api/connectors/<int:connector_id>', methods=['PUT'])
 def update_tool_connector(connector_id):
     """Update existing tool connector"""

@@ -12,8 +12,15 @@ interface StepFiveProps {
 }
 
 export default function StepFive({ applicationId, setCanProceed }: StepFiveProps) {
-  const { data: auditResults = [], isLoading } = useQuery({
-    queryKey: ["/api/audit-results/application", applicationId],
+  // Get saved answers from Step 4 execution
+  const { data: savedAnswers = [], isLoading } = useQuery({
+    queryKey: [`/api/questions/answers/${applicationId}`],
+    enabled: !!applicationId,
+  });
+
+  // Get original question analyses for display
+  const { data: analyses = [] } = useQuery({
+    queryKey: [`/api/questions/analyses/${applicationId}`],
     enabled: !!applicationId,
   });
 
@@ -23,10 +30,11 @@ export default function StepFive({ applicationId, setCanProceed }: StepFiveProps
     setCanProceed(true);
   }, [setCanProceed]);
 
-  const completed = auditResults.filter((r: any) => r.status === "completed").length;
-  const partial = auditResults.filter((r: any) => r.status === "partial").length;
-  const failed = auditResults.filter((r: any) => r.status === "failed").length;
-  const total = auditResults.length;
+  // Calculate statistics from saved answers
+  const completed = savedAnswers.length;
+  const partial = 0; // We don't have partial status in current implementation
+  const failed = analyses.length - completed;
+  const total = analyses.length;
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -41,16 +49,11 @@ export default function StepFive({ applicationId, setCanProceed }: StepFiveProps
     }
   };
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "completed":
-        return <Badge className="bg-green-100 text-green-800">Completed</Badge>;
-      case "partial":
-        return <Badge className="bg-yellow-100 text-yellow-800">Partial</Badge>;
-      case "failed":
-        return <Badge className="bg-red-100 text-red-800">Failed</Badge>;
-      default:
-        return <Badge className="bg-gray-100 text-gray-800">Unknown</Badge>;
+  const getStatusBadge = (hasAnswer: boolean) => {
+    if (hasAnswer) {
+      return <Badge className="bg-green-100 text-green-800">Completed</Badge>;
+    } else {
+      return <Badge className="bg-red-100 text-red-800">Failed</Badge>;
     }
   };
 
@@ -133,7 +136,7 @@ export default function StepFive({ applicationId, setCanProceed }: StepFiveProps
             </div>
             <div className="bg-white rounded border p-3">
               <code className="text-sm text-slate-700">
-                \\nas-01.company.com\audit\results\customer-portal-audit-2024\
+                /audit/results/application-{applicationId}/
               </code>
             </div>
           </div>
@@ -157,30 +160,38 @@ export default function StepFive({ applicationId, setCanProceed }: StepFiveProps
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {auditResults.map((result: any) => (
-                    <TableRow key={result.id}>
-                      <TableCell className="font-medium">
-                        {result.questionId}
-                      </TableCell>
-                      <TableCell>{result.question}</TableCell>
-                      <TableCell>{result.category}</TableCell>
-                      <TableCell>{getStatusBadge(result.status)}</TableCell>
-                      <TableCell>
-                        {result.documentPath ? (
-                          <a
-                            href="#"
-                            className="text-primary hover:text-blue-800 text-sm"
-                          >
-                            {result.documentPath}
-                          </a>
-                        ) : (
-                          <span className="text-slate-400 text-sm">
-                            No document
-                          </span>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {analyses.map((analysis: any) => {
+                    const savedAnswer = savedAnswers.find((answer: any) => answer.questionId === analysis.id);
+                    const hasAnswer = !!savedAnswer;
+                    return (
+                      <TableRow key={analysis.id}>
+                        <TableCell className="font-medium">
+                          {analysis.id}
+                        </TableCell>
+                        <TableCell className="max-w-md truncate">
+                          {analysis.originalQuestion}
+                        </TableCell>
+                        <TableCell>{analysis.category}</TableCell>
+                        <TableCell>{getStatusBadge(hasAnswer)}</TableCell>
+                        <TableCell>
+                          {hasAnswer ? (
+                            <div className="text-sm">
+                              <div className="text-slate-600">
+                                {savedAnswer.dataPoints} records
+                              </div>
+                              <div className="text-xs text-slate-500">
+                                Risk: {savedAnswer.riskLevel} | {savedAnswer.complianceStatus}
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-slate-400 text-sm">
+                              No data collected
+                            </span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>
@@ -198,7 +209,9 @@ export default function StepFive({ applicationId, setCanProceed }: StepFiveProps
                   <h4 className="text-sm font-medium text-slate-900">
                     Audit Report Summary
                   </h4>
-                  <p className="text-xs text-slate-500">Generated 2 minutes ago</p>
+                  <p className="text-xs text-slate-500">
+                    {completed} questions completed • {total - completed} pending
+                  </p>
                 </div>
                 <Button size="sm" variant="outline">
                   <Download className="h-4 w-4 mr-2" />
@@ -211,7 +224,9 @@ export default function StepFive({ applicationId, setCanProceed }: StepFiveProps
                   <h4 className="text-sm font-medium text-slate-900">
                     Data Collection Log
                   </h4>
-                  <p className="text-xs text-slate-500">Generated 2 minutes ago</p>
+                  <p className="text-xs text-slate-500">
+                    {savedAnswers.reduce((sum: number, answer: any) => sum + (answer.dataPoints || 0), 0)} total records collected
+                  </p>
                 </div>
                 <Button size="sm" variant="outline">
                   <Download className="h-4 w-4 mr-2" />
