@@ -134,7 +134,10 @@ export default function StepThree({ applicationId, onNext, setCanProceed }: Step
         return {
           ...analysis,
           toolSuggestion: updatedToolSuggestion,
-          connectorToUse: updatedConnectorToUse
+          connectorToUse: updatedConnectorToUse,
+          // Map 'prompt' to 'aiPrompt' for consistent frontend usage
+          aiPrompt: (analysis as any).aiPrompt || (analysis as any).prompt || '',
+          questionId: (analysis as any).questionId || (analysis as any).id
         };
       });
       setAnalyses(updatedAnalyses);

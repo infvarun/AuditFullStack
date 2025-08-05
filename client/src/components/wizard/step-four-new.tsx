@@ -450,7 +450,7 @@ export default function StepFour({ applicationId, onNext, setCanProceed }: StepF
                         
                         {connector ? (
                           <Badge variant="secondary" className="bg-green-100 text-green-800">
-                            {connector.name}
+                            {connector.connectorName}
                           </Badge>
                         ) : (
                           <Badge variant="destructive">No Connector</Badge>
@@ -466,7 +466,7 @@ export default function StepFour({ applicationId, onNext, setCanProceed }: StepF
                       {/* Agent Prompt */}
                       <div>
                         <p className="text-sm font-medium text-slate-700">Agent Prompt:</p>
-                        <p className="text-sm text-slate-600">{analysis.aiPrompt}</p>
+                        <p className="text-sm text-slate-600">{analysis.aiPrompt || analysis.prompt}</p>
                       </div>
                       
                       {/* Progress for running execution */}
