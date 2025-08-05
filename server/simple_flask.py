@@ -2383,14 +2383,14 @@ def veritas_gpt_chat():
                 # Try to get Step 4 execution results for this audit
                 try:
                     cursor.execute("""
-                        SELECT question_id, question_text, answer, status, tool_name, findings
-                        FROM execution_results 
+                        SELECT question_id, result, status, execution_details
+                        FROM agent_executions 
                         WHERE application_id = %s
                         ORDER BY question_id
                     """, (audit_id,))
                     execution_results = cursor.fetchall() or []
                 except Exception as db_error:
-                    print(f"Execution results query failed: {db_error}")
+                    print(f"Agent executions query failed: {db_error}")
                     execution_results = []
         
         except Exception as conn_error:
@@ -2434,10 +2434,26 @@ def veritas_gpt_chat():
             for result in execution_results:
                 if result.get('status') == 'completed':
                     completed_count += 1
-                    if len(sample_findings) < 3 and result.get('findings'):
-                        question_text = result.get('question_text', 'Unknown Question')[:50] + '...' if len(result.get('question_text', '')) > 50 else result.get('question_text', '')
-                        findings = result.get('findings', '')[:100] + '...' if len(result.get('findings', '')) > 100 else result.get('findings', '')
-                        sample_findings.append(f"  • {question_text}: {findings}")
+                    
+                    # Extract findings from JSON result data
+                    if len(sample_findings) < 3:
+                        try:
+                            result_data = json.loads(result.get('result', '{}')) if isinstance(result.get('result'), str) else result.get('result', {})
+                            question_id = result.get('question_id', 'Unknown')
+                            
+                            # Get findings from the result JSON
+                            findings_list = result_data.get('findings', [])
+                            if findings_list:
+                                finding_text = findings_list[0].get('finding', 'No findings available')[:80] + '...' if len(findings_list[0].get('finding', '')) > 80 else findings_list[0].get('finding', '')
+                                sample_findings.append(f"  • {question_id}: {finding_text}")
+                            else:
+                                # Try executive summary
+                                exec_summary = result_data.get('analysis', {}).get('executiveSummary', '')
+                                if exec_summary:
+                                    summary_text = exec_summary[:80] + '...' if len(exec_summary) > 80 else exec_summary
+                                    sample_findings.append(f"  • {question_id}: {summary_text}")
+                        except (json.JSONDecodeError, AttributeError) as parse_error:
+                            print(f"Error parsing result JSON: {parse_error}")
             
             if total_count > 0:
                 execution_info.append(f"- Execution Status: {completed_count}/{total_count} questions completed")
