@@ -109,7 +109,7 @@ def get_applications():
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         cursor.execute("""
             SELECT id, COALESCE(audit_name, name) as audit_name, ci_id, 
-                   start_date, end_date, enable_followup_questions, created_at 
+                   start_date, end_date, enable_followup_questions, created_at, status
             FROM applications 
             ORDER BY created_at DESC
         """)
@@ -123,7 +123,8 @@ def get_applications():
                 'auditDateFrom': row['start_date'],
                 'auditDateTo': row['end_date'],
                 'enableFollowupQuestions': row['enable_followup_questions'] or False,
-                'createdAt': row['created_at']
+                'createdAt': row['created_at'],
+                'status': row.get('status', 'In Progress')
             }
             applications.append(app_data)
         
