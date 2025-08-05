@@ -29,10 +29,11 @@ interface QuestionAnalysis {
 
 interface ToolConnector {
   id: number;
-  name: string;
-  type: string;
+  connectorName: string;
+  connectorType: string;
   ciId: string;
-  config: any;
+  configuration: any;
+  status: string;
 }
 
 interface AgentExecution {
@@ -60,7 +61,17 @@ const TOOL_NAMES = {
   gnosis: 'Gnosis Document Repository',
   jira: 'Jira',
   qtest: 'QTest',
-  service_now: 'Service Now',
+  service_now: 'ServiceNow',
+};
+
+// Map old tool IDs to new ones for backward compatibility
+const TOOL_ID_MAPPING: Record<string, string> = {
+  'sql_server': 'SQL Server DB',
+  'oracle_db': 'Oracle DB', 
+  'gnosis': 'Gnosis Document Repository',
+  'jira': 'Jira',
+  'qtest': 'QTest',
+  'service_now': 'ServiceNow',
 };
 
 export default function StepFour({ applicationId, onNext, setCanProceed }: StepFourProps) {
@@ -113,7 +124,9 @@ export default function StepFour({ applicationId, onNext, setCanProceed }: StepF
       const initialExecutions: Record<string, AgentExecution> = {};
       
       analyses.forEach(analysis => {
-        const connector = connectors.find(c => c.type === analysis.toolSuggestion);
+        // Map old tool IDs to new connector types for matching
+        const mappedToolType = TOOL_ID_MAPPING[analysis.toolSuggestion] || analysis.toolSuggestion;
+        const connector = connectors.find(c => c.connectorType === mappedToolType && c.status === 'active');
         
         initialExecutions[analysis.questionId] = {
           questionId: analysis.questionId,
@@ -145,7 +158,9 @@ export default function StepFour({ applicationId, onNext, setCanProceed }: StepF
   }, [executions, setCanProceed]);
 
   const getConnectorForTool = (toolType: string) => {
-    return connectors.find(c => c.type === toolType);
+    // Map old tool IDs to new connector types for matching
+    const mappedToolType = TOOL_ID_MAPPING[toolType] || toolType;
+    return connectors.find(c => c.connectorType === mappedToolType && c.status === 'active');
   };
 
   const executeAllAgents = async () => {
@@ -200,9 +215,9 @@ export default function StepFour({ applicationId, onNext, setCanProceed }: StepF
 
         // Mock result based on tool type
         const mockResult = {
-          data: `Data collected from ${TOOL_NAMES[analysis.toolSuggestion as keyof typeof TOOL_NAMES]} for question: ${analysis.originalQuestion}`,
+          data: `Data collected from ${TOOL_ID_MAPPING[analysis.toolSuggestion] || TOOL_NAMES[analysis.toolSuggestion as keyof typeof TOOL_NAMES]} for question: ${analysis.originalQuestion}`,
           records: Math.floor(Math.random() * 100) + 1,
-          source: connector.name,
+          source: connector.connectorName,
           timestamp: new Date().toISOString()
         };
 
