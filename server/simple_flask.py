@@ -2331,16 +2331,19 @@ def veritas_gpt_chat():
         data = request.get_json()
         message = data.get('message')
         ci_id = data.get('ciId')
+        audit_id = data.get('auditId')
+        audit_name = data.get('auditName', 'Unknown Audit')
         
-        if not message or not ci_id:
-            return jsonify({'error': 'Message and CI ID are required'}), 400
+        if not message or not ci_id or not audit_id:
+            return jsonify({'error': 'Message, CI ID, and Audit ID are required'}), 400
         
-        # Get context documents for this CI
         conn = get_db_connection()
         if not conn:
             return jsonify({'error': 'Database connection failed'}), 500
         
         cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Get context documents for this CI
         cursor.execute("""
             SELECT document_type, file_name, file_path, file_size
             FROM context_documents 
@@ -2349,6 +2352,16 @@ def veritas_gpt_chat():
         """, (ci_id,))
         
         context_docs = cursor.fetchall()
+        
+        # Get data collection forms for this audit
+        cursor.execute("""
+            SELECT file_name, file_type, total_questions, categories, subcategories
+            FROM data_requests 
+            WHERE application_id = %s
+            ORDER BY uploaded_at DESC
+        """, (audit_id,))
+        
+        data_requests = cursor.fetchall()
         
         # Build context information
         context_info = []
@@ -2361,19 +2374,37 @@ def veritas_gpt_chat():
             
             context_info.append(f"- {doc_type_label}: {doc['file_name']} ({doc['file_size']} bytes)")
         
+        # Build data collection forms information
+        data_collection_info = []
+        for req in data_requests:
+            file_type_label = "Primary Questions" if req['file_type'] == 'primary' else "Follow-up Questions"
+            categories = req['categories'] if req['categories'] else []
+            category_list = ", ".join(categories) if categories else "Various"
+            data_collection_info.append(f"- {file_type_label}: {req['file_name']} ({req['total_questions']} questions in {category_list})")
+        
         # Create context-aware system prompt
-        system_prompt = f"""You are Veritas GPT, an AI assistant specialized in audit data collection and analysis for CI {ci_id}.
+        system_prompt = f"""You are Veritas GPT, an AI assistant specialized in audit data collection and analysis for audit "{audit_name}" (CI {ci_id}).
 
-You have access to the following context documents for this CI:
+CONTEXT DOCUMENTS AVAILABLE FOR THIS CI:
 {chr(10).join(context_info) if context_info else "No context documents available."}
 
-Your role is to:
-1. Provide accurate, context-aware responses about audit processes and data collection
-2. Reference relevant information from the uploaded context documents when applicable
-3. Guide users through audit workflows and answer questions about the CI system
-4. Maintain a professional, helpful tone focused on audit excellence
+DATA COLLECTION FORMS FOR THIS AUDIT:
+{chr(10).join(data_collection_info) if data_collection_info else "No data collection forms available."}
 
-Please respond to user queries with detailed, actionable information while referencing the available context when relevant."""
+Your role is to:
+1. Provide accurate, context-aware responses about this specific audit and its CI system
+2. Reference both context documents AND data collection forms when relevant
+3. Help users understand audit questions, requirements, and data collection processes
+4. Guide users through audit workflows specific to this audit
+5. Maintain a professional, helpful tone focused on audit excellence
+
+You have comprehensive knowledge of:
+- The audit context from uploaded documents
+- The specific questions and categories being audited
+- The data collection requirements and structure
+- Best practices for audit data gathering
+
+Please respond to user queries with detailed, actionable information while referencing the available context and data collection forms when relevant."""
         
         # Use Langchain to generate response
         messages = [
@@ -2386,6 +2417,8 @@ Please respond to user queries with detailed, actionable information while refer
         return jsonify({
             'response': response.content,
             'contextDocuments': len(context_docs),
+            'dataCollectionForms': len(data_requests),
+            'auditName': audit_name,
             'timestamp': datetime.now().isoformat()
         }), 200
         

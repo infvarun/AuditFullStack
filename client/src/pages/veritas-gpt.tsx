@@ -40,7 +40,7 @@ interface ThinkingStep {
 
 export default function VeritasGPT() {
   const [, setLocation] = useLocation();
-  const [selectedCiId, setSelectedCiId] = useState<string>("");
+  const [selectedAuditId, setSelectedAuditId] = useState<string>("");
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -54,21 +54,32 @@ export default function VeritasGPT() {
     queryKey: ["/api/applications"],
   });
 
-  // Fetch context documents for selected CI
+  // Get selected audit info
+  const selectedAudit = applications.find(app => app.id.toString() === selectedAuditId);
+  
+  // Fetch context documents for selected audit's CI
   const { data: contextDocuments = [] } = useQuery<ContextDocument[]>({
-    queryKey: ["/api/context-documents", selectedCiId],
-    enabled: !!selectedCiId,
+    queryKey: ["/api/context-documents", selectedAudit?.ciId],
+    enabled: !!selectedAudit?.ciId,
   });
 
-  // Get unique CI IDs
-  const uniqueCiIds = Array.from(new Set(applications.map(app => app.ciId)));
+  // Fetch data collection forms for selected audit
+  const { data: dataRequests = [] } = useQuery({
+    queryKey: ["/api/data-requests", selectedAuditId],
+    enabled: !!selectedAuditId,
+  });
 
   // Chat mutation
   const chatMutation = useMutation({
-    mutationFn: async ({ message, ciId }: { message: string; ciId: string }) => {
+    mutationFn: async ({ message, auditId }: { message: string; auditId: string }) => {
+      const audit = applications.find(app => app.id.toString() === auditId);
+      if (!audit) throw new Error("Audit not found");
+      
       const response = await apiRequest("POST", "/api/veritas-gpt/chat", {
         message,
-        ciId,
+        ciId: audit.ciId,
+        auditId: auditId,
+        auditName: audit.auditName,
         conversationId: conversationId || undefined,
       });
       return response.json();
@@ -142,11 +153,11 @@ export default function VeritasGPT() {
   });
 
   const handleSendMessage = () => {
-    if (!message.trim() || !selectedCiId || isLoading) return;
+    if (!message.trim() || !selectedAuditId || isLoading) return;
     
     chatMutation.mutate({
       message: message.trim(),
-      ciId: selectedCiId,
+      auditId: selectedAuditId,
     });
   };
 
@@ -223,7 +234,7 @@ export default function VeritasGPT() {
           
           {/* Sidebar - Context & Controls */}
           <div className="lg:col-span-1 space-y-6">
-            {/* CI Selection */}
+            {/* Audit Selection */}
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg flex items-center">
@@ -232,14 +243,17 @@ export default function VeritasGPT() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <Select value={selectedCiId} onValueChange={setSelectedCiId}>
+                <Select value={selectedAuditId} onValueChange={setSelectedAuditId}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select Audit CI ID" />
+                    <SelectValue placeholder="Choose an audit to chat about..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {uniqueCiIds.map((ciId) => (
-                      <SelectItem key={ciId} value={ciId}>
-                        {ciId}
+                    {applications.map((app) => (
+                      <SelectItem key={app.id} value={app.id.toString()}>
+                        <div className="flex flex-col">
+                          <span className="font-medium">{app.auditName}</span>
+                          <span className="text-xs text-slate-500">CI: {app.ciId}</span>
+                        </div>
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -247,41 +261,70 @@ export default function VeritasGPT() {
               </CardContent>
             </Card>
 
-            {/* Context Documents */}
-            {selectedCiId && (
+            {/* Audit Information */}
+            {selectedAuditId && selectedAudit && (
               <Card>
                 <CardHeader>
                   <CardTitle className="text-lg flex items-center">
                     <FileText className="h-5 w-5 mr-2 text-blue-600" />
-                    Context Available
+                    Audit Context
                   </CardTitle>
                 </CardHeader>
-                <CardContent>
-                  {contextDocuments.length > 0 ? (
-                    <div className="space-y-3">
-                      {contextDocuments.map((doc) => (
-                        <div key={doc.id} className="flex items-center space-x-3 p-3 bg-slate-50 rounded-lg">
-                          {getDocumentTypeIcon(doc.documentType)}
-                          <div>
-                            <p className="text-sm font-medium">{getDocumentTypeLabel(doc.documentType)}</p>
-                            <p className="text-xs text-slate-500">{doc.fileName}</p>
+                <CardContent className="space-y-4">
+                  <div className="p-3 bg-blue-50 rounded-lg">
+                    <p className="text-sm font-medium text-blue-900">{selectedAudit.auditName}</p>
+                    <p className="text-xs text-blue-700">CI: {selectedAudit.ciId}</p>
+                    <p className="text-xs text-blue-600">Status: {selectedAudit.status}</p>
+                  </div>
+                  
+                  {/* Context Documents */}
+                  <div>
+                    <h4 className="text-sm font-medium mb-2">Context Documents</h4>
+                    {contextDocuments.length > 0 ? (
+                      <div className="space-y-2">
+                        {contextDocuments.map((doc) => (
+                          <div key={doc.id} className="flex items-center space-x-2 p-2 bg-slate-50 rounded">
+                            {getDocumentTypeIcon(doc.documentType)}
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-medium truncate">{getDocumentTypeLabel(doc.documentType)}</p>
+                              <p className="text-xs text-slate-500 truncate">{doc.fileName}</p>
+                            </div>
                           </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-center py-6">
-                      <FileText className="h-12 w-12 text-slate-300 mx-auto mb-3" />
-                      <p className="text-sm text-slate-500 mb-3">No context documents uploaded</p>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setLocation("/settings")}
-                      >
-                        Upload Context
-                      </Button>
-                    </div>
-                  )}
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-3">
+                        <p className="text-xs text-slate-500 mb-2">No context documents</p>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setLocation("/settings")}
+                        >
+                          Upload Context
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Data Collection Forms */}
+                  <div>
+                    <h4 className="text-sm font-medium mb-2">Data Collection</h4>
+                    {dataRequests.length > 0 ? (
+                      <div className="space-y-2">
+                        {dataRequests.map((req: any, idx: number) => (
+                          <div key={idx} className="p-2 bg-green-50 rounded">
+                            <p className="text-xs font-medium text-green-900">
+                              {req.fileType === 'primary' ? 'Primary Questions' : 'Follow-up Questions'}
+                            </p>
+                            <p className="text-xs text-green-700">{req.totalQuestions} questions</p>
+                            <p className="text-xs text-green-600 truncate">{req.fileName}</p>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-slate-500">No data collection forms</p>
+                    )}
+                  </div>
                 </CardContent>
               </Card>
             )}
@@ -301,14 +344,14 @@ export default function VeritasGPT() {
                 {/* Messages Area */}
                 <ScrollArea className="flex-1 pr-4 mb-4">
                   <div className="space-y-4">
-                    {!selectedCiId ? (
+                    {!selectedAuditId ? (
                       <div className="text-center py-12">
                         <Bot className="h-16 w-16 text-slate-300 mx-auto mb-4" />
                         <h3 className="text-lg font-medium text-slate-900 mb-2">
                           Select an Audit to Start
                         </h3>
                         <p className="text-slate-500">
-                          Choose a CI ID from the sidebar to begin your context-aware conversation
+                          Choose an audit from the sidebar to begin your context-aware conversation
                         </p>
                       </div>
                     ) : messages.length === 0 ? (
@@ -399,7 +442,7 @@ export default function VeritasGPT() {
                 </ScrollArea>
 
                 {/* Input Area */}
-                {selectedCiId && (
+                {selectedAuditId && (
                   <div className="flex space-x-2">
                     <Input
                       value={message}
