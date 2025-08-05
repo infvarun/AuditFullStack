@@ -296,9 +296,11 @@ export default function StepThree({ applicationId, onNext, setCanProceed }: Step
   };
 
   const getConnectorStatus = (toolType: string) => {
-    const connector = connectors.find(c => c.connector_type === toolType);
+    // Map old tool IDs to new connector types for matching
+    const mappedToolType = TOOL_ID_MAPPING[toolType] || toolType;
+    const connector = connectors.find(c => c.connector_type === mappedToolType);
     return { 
-      available: !!connector, 
+      available: !!connector && connector.status === 'active', 
       status: connector?.status || 'not_configured'
     };
   };
