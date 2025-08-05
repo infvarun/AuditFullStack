@@ -100,10 +100,25 @@ export default function StepFour({ applicationId, onNext, setCanProceed }: StepF
   });
 
   // Get existing saved answers to show completed status
-  const { data: savedAnswers = [] } = useQuery({
+  const { data: savedAnswers = [], isLoading: isLoadingSavedAnswers } = useQuery({
     queryKey: [`/api/questions/answers/${applicationId}`],
     enabled: !!applicationId,
   });
+
+  // Debug logging
+  useEffect(() => {
+    if (savedAnswers.length > 0) {
+      console.log('Saved answers loaded:', savedAnswers.length);
+      console.log('Sample saved answer IDs:', savedAnswers.slice(0, 3).map(a => a.questionId));
+    }
+  }, [savedAnswers]);
+
+  useEffect(() => {
+    if (analyses.length > 0) {
+      console.log('Analyses loaded:', analyses.length);
+      console.log('Sample analysis IDs:', analyses.slice(0, 3).map(a => a.id));
+    }
+  }, [analyses]);
 
   // Agent execution mutation
   const executeAgentMutation = useMutation({
@@ -196,7 +211,7 @@ export default function StepFour({ applicationId, onNext, setCanProceed }: StepF
 
   // Initialize executions when analyses are loaded
   useEffect(() => {
-    if (analyses.length > 0 && connectors.length >= 0) {
+    if (analyses.length > 0 && connectors.length >= 0 && !isLoadingSavedAnswers) {
       const initialExecutions: Record<string, AgentExecution> = {};
       
       analyses.forEach(analysis => {
@@ -206,6 +221,7 @@ export default function StepFour({ applicationId, onNext, setCanProceed }: StepF
         
         // Check if this question already has a saved answer
         const savedAnswer = savedAnswers.find(answer => answer.questionId === analysis.id);
+        console.log(`Looking for saved answer for ${analysis.id}, found:`, !!savedAnswer);
         
         if (savedAnswer) {
           // Show as completed with saved results
@@ -245,7 +261,7 @@ export default function StepFour({ applicationId, onNext, setCanProceed }: StepF
         return prev;
       });
     }
-  }, [analyses.length, connectors.length, savedAnswers.length]);
+  }, [analyses.length, connectors.length, savedAnswers.length, isLoadingSavedAnswers]);
 
   // Check if we can proceed (all executions completed)
   useEffect(() => {
