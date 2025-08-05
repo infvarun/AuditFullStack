@@ -64,7 +64,7 @@ export default function VeritasGPT() {
   });
 
   // Fetch data collection forms for selected audit
-  const { data: dataRequests = [] } = useQuery({
+  const { data: dataRequests = [] } = useQuery<any[]>({
     queryKey: ["/api/data-requests", selectedAuditId],
     enabled: !!selectedAuditId,
   });

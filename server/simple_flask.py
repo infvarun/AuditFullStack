@@ -2326,7 +2326,10 @@ def delete_context_document(document_id):
 
 @app.route('/api/veritas-gpt/chat', methods=['POST'])
 def veritas_gpt_chat():
-    """Handle Veritas GPT chat requests with context-aware responses"""
+    """Handle Veritas GPT chat requests with context-aware responses - gracefully handles missing documents"""
+    conn = None
+    cursor = None
+    
     try:
         data = request.get_json()
         message = data.get('message')
@@ -2337,97 +2340,168 @@ def veritas_gpt_chat():
         if not message or not ci_id or not audit_id:
             return jsonify({'error': 'Message, CI ID, and Audit ID are required'}), 400
         
-        conn = get_db_connection()
-        if not conn:
-            return jsonify({'error': 'Database connection failed'}), 500
-        
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-        
-        # Get context documents for this CI
-        cursor.execute("""
-            SELECT document_type, file_name, file_path, file_size
-            FROM context_documents 
-            WHERE ci_id = %s
-            ORDER BY uploaded_at DESC
-        """, (ci_id,))
-        
-        context_docs = cursor.fetchall()
-        
-        # Get data collection forms for this audit
-        cursor.execute("""
-            SELECT file_name, file_type, total_questions, categories, subcategories
-            FROM data_requests 
-            WHERE application_id = %s
-            ORDER BY uploaded_at DESC
-        """, (audit_id,))
-        
-        data_requests = cursor.fetchall()
-        
-        # Build context information
+        # Initialize context information
+        context_docs = []
+        data_requests = []
         context_info = []
-        for doc in context_docs:
-            doc_type_label = {
-                'support_plan': 'Support Plan',
-                'design_diagram': 'Design Diagram', 
-                'additional_supplements': 'Additional Supplements'
-            }.get(doc['document_type'], 'Document')
-            
-            context_info.append(f"- {doc_type_label}: {doc['file_name']} ({doc['file_size']} bytes)")
-        
-        # Build data collection forms information
         data_collection_info = []
-        for req in data_requests:
-            file_type_label = "Primary Questions" if req['file_type'] == 'primary' else "Follow-up Questions"
-            categories = req['categories'] if req['categories'] else []
-            category_list = ", ".join(categories) if categories else "Various"
-            data_collection_info.append(f"- {file_type_label}: {req['file_name']} ({req['total_questions']} questions in {category_list})")
         
-        # Create context-aware system prompt
+        # Try to get database connection and fetch context, but don't fail if unavailable
+        try:
+            conn = get_db_connection()
+            if conn:
+                cursor = conn.cursor(cursor_factory=RealDictCursor)
+                
+                # Try to get context documents for this CI
+                try:
+                    cursor.execute("""
+                        SELECT document_type, file_name, file_path, file_size
+                        FROM context_documents 
+                        WHERE ci_id = %s
+                        ORDER BY uploaded_at DESC
+                    """, (ci_id,))
+                    context_docs = cursor.fetchall() or []
+                except Exception as db_error:
+                    print(f"Context documents query failed: {db_error}")
+                    context_docs = []
+                
+                # Try to get data collection forms for this audit
+                try:
+                    cursor.execute("""
+                        SELECT file_name, file_type, total_questions, categories, subcategories
+                        FROM data_requests 
+                        WHERE application_id = %s
+                        ORDER BY uploaded_at DESC
+                    """, (audit_id,))
+                    data_requests = cursor.fetchall() or []
+                except Exception as db_error:
+                    print(f"Data requests query failed: {db_error}")
+                    data_requests = []
+        
+        except Exception as conn_error:
+            print(f"Database connection failed: {conn_error}")
+            # Continue without database context
+        
+        # Build context information (gracefully handle missing data)
+        try:
+            for doc in context_docs:
+                doc_type_label = {
+                    'support_plan': 'Support Plan',
+                    'design_diagram': 'Design Diagram', 
+                    'additional_supplements': 'Additional Supplements'
+                }.get(doc.get('document_type', ''), 'Document')
+                
+                file_name = doc.get('file_name', 'Unknown File')
+                file_size = doc.get('file_size', 0)
+                context_info.append(f"- {doc_type_label}: {file_name} ({file_size} bytes)")
+        except Exception as e:
+            print(f"Error building context info: {e}")
+        
+        # Build data collection forms information (gracefully handle missing data)  
+        try:
+            for req in data_requests:
+                file_type = req.get('file_type', 'unknown')
+                file_type_label = "Primary Questions" if file_type == 'primary' else "Follow-up Questions"
+                categories = req.get('categories', []) or []
+                category_list = ", ".join(categories) if categories else "Various"
+                total_questions = req.get('total_questions', 0)
+                file_name = req.get('file_name', 'Unknown File')
+                data_collection_info.append(f"- {file_type_label}: {file_name} ({total_questions} questions in {category_list})")
+        except Exception as e:
+            print(f"Error building data collection info: {e}")
+        
+        # Create context-aware system prompt with graceful degradation
+        context_section = chr(10).join(context_info) if context_info else "No context documents are currently available for this CI."
+        data_collection_section = chr(10).join(data_collection_info) if data_collection_info else "No data collection forms are currently available for this audit."
+        
         system_prompt = f"""You are Veritas GPT, an AI assistant specialized in audit data collection and analysis for audit "{audit_name}" (CI {ci_id}).
 
 CONTEXT DOCUMENTS AVAILABLE FOR THIS CI:
-{chr(10).join(context_info) if context_info else "No context documents available."}
+{context_section}
 
 DATA COLLECTION FORMS FOR THIS AUDIT:
-{chr(10).join(data_collection_info) if data_collection_info else "No data collection forms available."}
+{data_collection_section}
 
 Your role is to:
-1. Provide accurate, context-aware responses about this specific audit and its CI system
-2. Reference both context documents AND data collection forms when relevant
-3. Help users understand audit questions, requirements, and data collection processes
-4. Guide users through audit workflows specific to this audit
+1. Provide accurate, helpful responses about audit processes and data collection
+2. Reference available context documents and data collection forms when relevant
+3. Help users understand audit questions, requirements, and workflows
+4. Provide general audit guidance even when specific context is limited
 5. Maintain a professional, helpful tone focused on audit excellence
 
-You have comprehensive knowledge of:
-- The audit context from uploaded documents
-- The specific questions and categories being audited
-- The data collection requirements and structure
-- Best practices for audit data gathering
+Even without complete context, you can still help with:
+- General audit best practices and methodologies
+- Common audit questions and data collection strategies  
+- Workflow guidance and process recommendations
+- Industry-standard audit approaches
 
-Please respond to user queries with detailed, actionable information while referencing the available context and data collection forms when relevant."""
+Please provide detailed, actionable responses while being transparent about available context. If specific context is limited, focus on general audit guidance that would be valuable for this type of audit."""
         
-        # Use Langchain to generate response
-        messages = [
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=message)
-        ]
-        
-        response = llm.invoke(messages)
-        
+        # Use Langchain to generate response (ensure we're using Langchain not direct OpenAI)
+        try:
+            messages = [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=message)
+            ]
+            
+            # Ensure we're using the Langchain llm object, not direct OpenAI
+            response = llm.invoke(messages)
+            response_content = response.content
+            
+        except Exception as llm_error:
+            print(f"LLM invocation error: {llm_error}")
+            # Provide graceful fallback response
+            response_content = f"""I apologize, but I'm currently experiencing technical difficulties with the AI response system. 
+
+However, I can still help you with your audit question about "{audit_name}" (CI {ci_id}).
+
+Based on your query: "{message}"
+
+Here are some general audit guidance points:
+- Ensure all audit documentation is properly organized and accessible
+- Follow systematic data collection procedures for consistency
+- Validate data sources and maintain audit trails
+- Document findings clearly with supporting evidence
+
+Please try your question again, or contact your system administrator if the issue persists."""
+
         return jsonify({
-            'response': response.content,
+            'response': response_content,
             'contextDocuments': len(context_docs),
             'dataCollectionForms': len(data_requests),
             'auditName': audit_name,
-            'timestamp': datetime.now().isoformat()
+            'timestamp': datetime.now().isoformat(),
+            'status': 'success'
         }), 200
         
     except Exception as e:
         print(f"Veritas GPT error: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        # Provide user-friendly error with graceful degradation
+        error_response = f"""I encountered an issue while processing your request, but I can still provide general audit guidance.
+
+For audit "{audit_name}" (CI {ci_id}), regarding your question: "{message or 'your audit inquiry'}"
+
+General recommendations:
+- Review available audit documentation and context materials
+- Follow established audit procedures and protocols  
+- Ensure proper data collection and validation processes
+- Document all findings with appropriate detail
+
+Please try again or contact support if issues persist."""
+        
+        return jsonify({
+            'response': error_response,
+            'contextDocuments': 0,
+            'dataCollectionForms': 0,
+            'auditName': audit_name,
+            'timestamp': datetime.now().isoformat(),
+            'status': 'error_handled'
+        }), 200
+        
     finally:
-        if conn:
+        if cursor:
             cursor.close()
+        if conn:
             conn.close()
 
 if __name__ == '__main__':
