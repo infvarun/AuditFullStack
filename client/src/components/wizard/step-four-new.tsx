@@ -218,7 +218,7 @@ export default function StepFour({ applicationId, onNext, setCanProceed }: StepF
               records: savedAnswer.dataPoints,
               source: connector?.connectorName || 'Unknown',
               timestamp: savedAnswer.createdAt,
-              findings: JSON.parse(savedAnswer.findings || '[]'),
+              findings: savedAnswer.findings || [],
               riskLevel: savedAnswer.riskLevel,
               complianceStatus: savedAnswer.complianceStatus
             }
