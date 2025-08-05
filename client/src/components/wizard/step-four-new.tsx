@@ -99,6 +99,12 @@ export default function StepFour({ applicationId, onNext, setCanProceed }: StepF
     enabled: !!applicationData?.ciId,
   });
 
+  // Get existing saved answers to show completed status
+  const { data: savedAnswers = [] } = useQuery({
+    queryKey: [`/api/questions/answers/${applicationId}`],
+    enabled: !!applicationId,
+  });
+
   // Agent execution mutation
   const executeAgentMutation = useMutation({
     mutationFn: async ({ questionId, prompt, toolType, connectorId }: {
@@ -198,11 +204,33 @@ export default function StepFour({ applicationId, onNext, setCanProceed }: StepF
         const mappedToolType = TOOL_ID_MAPPING[analysis.toolSuggestion] || analysis.toolSuggestion;
         const connector = connectors.find(c => c.connectorType === mappedToolType && c.status === 'active');
         
-        initialExecutions[analysis.id] = {
-          questionId: analysis.id,
-          status: connector ? 'pending' : 'no_connector',
-          progress: 0
-        };
+        // Check if this question already has a saved answer
+        const savedAnswer = savedAnswers.find(answer => answer.questionId === analysis.id);
+        
+        if (savedAnswer) {
+          // Show as completed with saved results
+          initialExecutions[analysis.id] = {
+            questionId: analysis.id,
+            status: 'completed',
+            progress: 100,
+            result: {
+              data: savedAnswer.answer,
+              records: savedAnswer.dataPoints,
+              source: connector?.connectorName || 'Unknown',
+              timestamp: savedAnswer.createdAt,
+              findings: JSON.parse(savedAnswer.findings || '[]'),
+              riskLevel: savedAnswer.riskLevel,
+              complianceStatus: savedAnswer.complianceStatus
+            }
+          };
+        } else {
+          // Show as pending or no connector
+          initialExecutions[analysis.id] = {
+            questionId: analysis.id,
+            status: connector ? 'pending' : 'no_connector',
+            progress: 0
+          };
+        }
       });
       
       setExecutions(prev => {
@@ -217,7 +245,7 @@ export default function StepFour({ applicationId, onNext, setCanProceed }: StepF
         return prev;
       });
     }
-  }, [analyses.length, connectors.length]);
+  }, [analyses.length, connectors.length, savedAnswers.length]);
 
   // Check if we can proceed (all executions completed)
   useEffect(() => {
