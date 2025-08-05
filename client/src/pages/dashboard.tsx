@@ -13,7 +13,8 @@ import {
   CheckCircle,
   AlertCircle,
   Bot,
-  Trash2
+  Trash2,
+  Brain
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -112,6 +113,12 @@ export default function Dashboard() {
 
             {/* Right side actions */}
             <div className="flex items-center space-x-4">
+              <Link href="/veritas-gpt">
+                <Button variant="ghost" size="sm" className="text-purple-600 hover:text-purple-900">
+                  <Brain className="h-4 w-4 mr-2" />
+                  Veritas GPT
+                </Button>
+              </Link>
               <Link href="/settings">
                 <Button variant="ghost" size="sm" className="text-slate-600 hover:text-slate-900">
                   <Settings className="h-4 w-4 mr-2" />
@@ -235,6 +242,14 @@ export default function Dashboard() {
             >
               <Bot className="h-6 w-6 mr-3" />
               Create First Audit
+            </Button>
+            
+            <Button
+              onClick={() => setLocation("/veritas-gpt")}
+              className="bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white px-8 py-6 text-lg font-medium rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
+            >
+              <Bot className="h-6 w-6 mr-3" />
+              Veritas GPT
             </Button>
             
             <Button

@@ -80,6 +80,27 @@ export const auditResults = pgTable("audit_results", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const contextDocuments = pgTable("context_documents", {
+  id: serial("id").primaryKey(),
+  ciId: text("ci_id").notNull(),
+  documentType: text("document_type").notNull(), // support_plan, design_diagram, additional_supplements, other
+  fileName: text("file_name").notNull(),
+  filePath: text("file_path").notNull(),
+  fileSize: integer("file_size").notNull(),
+  uploadedAt: timestamp("uploaded_at").defaultNow(),
+}, (table) => ({
+  uniqueCiDocumentType: uniqueIndex("unique_ci_document_type").on(table.ciId, table.documentType, table.fileName),
+}));
+
+export const veritasConversations = pgTable("veritas_conversations", {
+  id: serial("id").primaryKey(),
+  ciId: text("ci_id").notNull(),
+  conversationId: text("conversation_id").notNull(),
+  messages: json("messages").notNull().default([]),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 export const insertApplicationSchema = createInsertSchema(applications).omit({
   id: true,
   createdAt: true,
@@ -111,6 +132,17 @@ export const insertAuditResultSchema = createInsertSchema(auditResults).omit({
   createdAt: true,
 });
 
+export const insertContextDocumentSchema = createInsertSchema(contextDocuments).omit({
+  id: true,
+  uploadedAt: true,
+});
+
+export const insertVeritasConversationSchema = createInsertSchema(veritasConversations).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 export type Application = typeof applications.$inferSelect;
 export type InsertApplication = z.infer<typeof insertApplicationSchema>;
 export type DataRequest = typeof dataRequests.$inferSelect;
@@ -123,3 +155,7 @@ export type DataCollectionSession = typeof dataCollectionSessions.$inferSelect;
 export type InsertDataCollectionSession = z.infer<typeof insertDataCollectionSessionSchema>;
 export type AuditResult = typeof auditResults.$inferSelect;
 export type InsertAuditResult = z.infer<typeof insertAuditResultSchema>;
+export type ContextDocument = typeof contextDocuments.$inferSelect;
+export type InsertContextDocument = z.infer<typeof insertContextDocumentSchema>;
+export type VeritasConversation = typeof veritasConversations.$inferSelect;
+export type InsertVeritasConversation = z.infer<typeof insertVeritasConversationSchema>;

@@ -21,6 +21,7 @@ from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_core.prompts import ChatPromptTemplate, SystemMessagePromptTemplate, HumanMessagePromptTemplate
+import shutil
 
 # Load environment variables
 load_dotenv()
@@ -44,6 +45,7 @@ CORS(app, origins=[
 # Configuration
 UPLOAD_FOLDER = 'uploads'
 ALLOWED_EXTENSIONS = {'xlsx', 'xls'}
+DOCUMENT_EXTENSIONS = {'pdf', 'doc', 'docx', 'txt'}
 MAX_CONTENT_LENGTH = 10 * 1024 * 1024  # 10MB max file size
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
@@ -54,6 +56,9 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def allowed_document_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in DOCUMENT_EXTENSIONS
 
 def create_audit_folder(application_id, audit_name):
     """Create audit folder for storing files"""
@@ -2171,6 +2176,221 @@ def get_connectors_by_ci(ci_id):
         return jsonify(connectors), 200
         
     except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if conn:
+            cursor.close()
+            conn.close()
+
+# ============= VERITAS GPT ENDPOINTS =============
+
+@app.route('/api/context-documents/<string:ci_id>', methods=['GET'])
+def get_context_documents(ci_id):
+    """Get all context documents for a specific CI ID"""
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'error': 'Database connection failed'}), 500
+        
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute("""
+            SELECT id, ci_id, document_type, file_name, file_path, 
+                   file_size, uploaded_at
+            FROM context_documents 
+            WHERE ci_id = %s
+            ORDER BY uploaded_at DESC
+        """, (ci_id,))
+        
+        documents = []
+        for row in cursor.fetchall():
+            doc_data = {
+                'id': row['id'],
+                'ciId': row['ci_id'],
+                'documentType': row['document_type'],
+                'fileName': row['file_name'],
+                'filePath': row['file_path'],
+                'fileSize': row['file_size'],
+                'uploadedAt': row['uploaded_at'].isoformat() if row['uploaded_at'] else None
+            }
+            documents.append(doc_data)
+        
+        return jsonify(documents), 200
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if conn:
+            cursor.close()
+            conn.close()
+
+@app.route('/api/context-documents/upload', methods=['POST'])
+def upload_context_document():
+    """Upload a context document for Veritas GPT"""
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file provided'}), 400
+        
+        file = request.files['file']
+        document_type = request.form.get('documentType')
+        ci_id = request.form.get('ciId')
+        
+        if not file or file.filename == '':
+            return jsonify({'error': 'No file selected'}), 400
+        
+        if not document_type or not ci_id:
+            return jsonify({'error': 'Document type and CI ID are required'}), 400
+        
+        if not allowed_document_file(file.filename):
+            return jsonify({'error': 'File type not allowed. Only PDF, DOC, DOCX, TXT files are supported'}), 400
+        
+        # Create audit folder structure: uploads/audit_<ci_id>/context_documents/
+        context_folder = os.path.join(UPLOAD_FOLDER, f"audit_{ci_id}", "context_documents")
+        os.makedirs(context_folder, exist_ok=True)
+        
+        # Save file with unique name
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = secure_filename(file.filename)
+        name, ext = os.path.splitext(filename)
+        unique_filename = f"{document_type}_{timestamp}_{name}{ext}"
+        file_path = os.path.join(context_folder, unique_filename)
+        
+        file.save(file_path)
+        file_size = os.path.getsize(file_path)
+        
+        # Save to database
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'error': 'Database connection failed'}), 500
+        
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute("""
+            INSERT INTO context_documents 
+            (ci_id, document_type, file_name, file_path, file_size, uploaded_at)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            RETURNING id
+        """, (ci_id, document_type, filename, file_path, file_size, datetime.now()))
+        
+        document_id = cursor.fetchone()['id']
+        conn.commit()
+        
+        return jsonify({
+            'message': 'Document uploaded successfully',
+            'documentId': document_id,
+            'fileName': filename,
+            'fileSize': file_size
+        }), 200
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if conn:
+            cursor.close()
+            conn.close()
+
+@app.route('/api/context-documents/<int:document_id>', methods=['DELETE'])
+def delete_context_document(document_id):
+    """Delete a context document"""
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'error': 'Database connection failed'}), 500
+        
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Get document info first
+        cursor.execute("SELECT file_path FROM context_documents WHERE id = %s", (document_id,))
+        document = cursor.fetchone()
+        
+        if not document:
+            return jsonify({'error': 'Document not found'}), 404
+        
+        # Delete file from filesystem
+        try:
+            if os.path.exists(document['file_path']):
+                os.remove(document['file_path'])
+        except OSError:
+            pass  # Continue even if file deletion fails
+        
+        # Delete from database
+        cursor.execute("DELETE FROM context_documents WHERE id = %s", (document_id,))
+        conn.commit()
+        
+        return jsonify({'message': 'Document deleted successfully'}), 200
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if conn:
+            cursor.close()
+            conn.close()
+
+@app.route('/api/veritas-gpt/chat', methods=['POST'])
+def veritas_gpt_chat():
+    """Handle Veritas GPT chat requests with context-aware responses"""
+    try:
+        data = request.get_json()
+        message = data.get('message')
+        ci_id = data.get('ciId')
+        
+        if not message or not ci_id:
+            return jsonify({'error': 'Message and CI ID are required'}), 400
+        
+        # Get context documents for this CI
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'error': 'Database connection failed'}), 500
+        
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute("""
+            SELECT document_type, file_name, file_path, file_size
+            FROM context_documents 
+            WHERE ci_id = %s
+            ORDER BY uploaded_at DESC
+        """, (ci_id,))
+        
+        context_docs = cursor.fetchall()
+        
+        # Build context information
+        context_info = []
+        for doc in context_docs:
+            doc_type_label = {
+                'support_plan': 'Support Plan',
+                'design_diagram': 'Design Diagram', 
+                'additional_supplements': 'Additional Supplements'
+            }.get(doc['document_type'], 'Document')
+            
+            context_info.append(f"- {doc_type_label}: {doc['file_name']} ({doc['file_size']} bytes)")
+        
+        # Create context-aware system prompt
+        system_prompt = f"""You are Veritas GPT, an AI assistant specialized in audit data collection and analysis for CI {ci_id}.
+
+You have access to the following context documents for this CI:
+{chr(10).join(context_info) if context_info else "No context documents available."}
+
+Your role is to:
+1. Provide accurate, context-aware responses about audit processes and data collection
+2. Reference relevant information from the uploaded context documents when applicable
+3. Guide users through audit workflows and answer questions about the CI system
+4. Maintain a professional, helpful tone focused on audit excellence
+
+Please respond to user queries with detailed, actionable information while referencing the available context when relevant."""
+        
+        # Use Langchain to generate response
+        messages = [
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=message)
+        ]
+        
+        response = llm.invoke(messages)
+        
+        return jsonify({
+            'response': response.content,
+            'contextDocuments': len(context_docs),
+            'timestamp': datetime.now().isoformat()
+        }), 200
+        
+    except Exception as e:
+        print(f"Veritas GPT error: {str(e)}")
         return jsonify({'error': str(e)}), 500
     finally:
         if conn:

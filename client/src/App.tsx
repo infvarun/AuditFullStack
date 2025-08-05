@@ -6,6 +6,7 @@ import { TooltipProvider } from "./components/ui/tooltip";
 import Dashboard from "./pages/dashboard";
 import WizardPage from "./pages/wizard";
 import Settings from "./pages/settings";
+import VeritasGPT from "./pages/veritas-gpt";
 import NotFound from "./pages/not-found";
 
 function Router() {
@@ -15,6 +16,7 @@ function Router() {
       <Route path="/wizard" component={WizardPage} />
       <Route path="/wizard/:applicationId" component={WizardPage} />
       <Route path="/settings" component={Settings} />
+      <Route path="/veritas-gpt" component={VeritasGPT} />
       <Route component={NotFound} />
     </Switch>
   );

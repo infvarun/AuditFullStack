@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { ArrowLeft, Database, Settings as SettingsIcon, FolderOpen, Search, Plus, Edit2, Trash2, Activity, CheckCircle, XCircle, AlertCircle, RefreshCw } from "lucide-react";
+import { ArrowLeft, Database, Settings as SettingsIcon, FolderOpen, Search, Plus, Edit2, Trash2, Activity, CheckCircle, XCircle, AlertCircle, RefreshCw, Upload, FileText, Brain } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Separator } from "../components/ui/separator";
 import { apiRequest, queryClient } from "../lib/queryClient";
 import { useToast } from "../hooks/use-toast";
+import { Application, ContextDocument } from "@shared/schema";
 
 interface ConnectorConfig {
   type: string;
@@ -110,6 +111,8 @@ export default function Settings() {
   const [connectorName, setConnectorName] = useState("");
   const [formData, setFormData] = useState<Record<string, string>>({});
   const [activeMenuItem, setActiveMenuItem] = useState("connectors");
+  const [selectedContextCi, setSelectedContextCi] = useState("");
+  const [uploadingFile, setUploadingFile] = useState(false);
 
   // Get all unique CI IDs
   const { data: applications } = useQuery({
@@ -120,6 +123,12 @@ export default function Settings() {
   const { data: connectors, refetch: refetchConnectors } = useQuery({
     queryKey: ["/api/connectors/ci", selectedCi],
     enabled: !!selectedCi,
+  });
+
+  // Get context documents for selected CI
+  const { data: contextDocuments, refetch: refetchContextDocs } = useQuery<ContextDocument[]>({
+    queryKey: ["/api/context-documents", selectedContextCi],
+    enabled: !!selectedContextCi,
   });
 
   // Database health check query
@@ -211,6 +220,65 @@ export default function Settings() {
     },
   });
 
+  // Upload context document mutation
+  const uploadContextDocMutation = useMutation({
+    mutationFn: async ({ file, documentType, ciId }: { file: File; documentType: string; ciId: string }) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('documentType', documentType);
+      formData.append('ciId', ciId);
+      
+      const response = await fetch('/api/context-documents/upload', {
+        method: 'POST',
+        body: formData,
+      });
+      
+      if (!response.ok) {
+        throw new Error('Upload failed');
+      }
+      
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Document uploaded",
+        description: "Context document uploaded successfully.",
+      });
+      refetchContextDocs();
+      setUploadingFile(false);
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Upload failed",
+        description: error.message,
+        variant: "destructive",
+      });
+      setUploadingFile(false);
+    },
+  });
+
+  // Delete context document mutation
+  const deleteContextDocMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const response = await apiRequest("DELETE", `/api/context-documents/${id}`);
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Document deleted",
+        description: "Context document removed successfully.",
+      });
+      refetchContextDocs();
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Delete failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   // Get unique CI IDs from applications
   const uniqueCiIds = (applications as any[])?.map((app: any) => app.ciId).filter((value: string, index: number, self: string[]) => self.indexOf(value) === index) || [];
   const filteredCiIds = uniqueCiIds.filter((ciId: string) => ciId.toLowerCase().includes(searchTerm.toLowerCase()));
@@ -245,6 +313,236 @@ export default function Settings() {
   };
 
   const selectedConnectorConfig = connectorConfigs.find(c => c.type === selectedConnectorType);
+
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>, documentType: string) => {
+    const file = event.target.files?.[0];
+    if (!file || !selectedContextCi) return;
+
+    setUploadingFile(true);
+    uploadContextDocMutation.mutate({
+      file,
+      documentType,
+      ciId: selectedContextCi,
+    });
+
+    // Reset file input
+    event.target.value = '';
+  };
+
+  const getDocumentTypeLabel = (type: string) => {
+    switch (type) {
+      case 'support_plan': return 'Support Plan';
+      case 'design_diagram': return 'Design Diagram';
+      case 'additional_supplements': return 'Additional Supplements';
+      default: return 'Other Document';
+    }
+  };
+
+  const getDocumentTypeIcon = (type: string) => {
+    switch (type) {
+      case 'support_plan': return <FileText className="h-4 w-4 text-blue-500" />;
+      case 'design_diagram': return <SettingsIcon className="h-4 w-4 text-green-500" />;
+      case 'additional_supplements': return <Upload className="h-4 w-4 text-purple-500" />;
+      default: return <FileText className="h-4 w-4 text-gray-500" />;
+    }
+  };
+
+  const renderContextContent = () => (
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* CI Selection */}
+      <Card className="card-modern">
+        <CardHeader>
+          <CardTitle className="flex items-center space-x-2">
+            <Search className="h-5 w-5" />
+            <span>Select CI</span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="context-ci-search">Search CI</Label>
+              <Input
+                id="context-ci-search"
+                placeholder="Search CI ID..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+            
+            <div className="max-h-96 overflow-y-auto space-y-2">
+              {filteredCiIds.map((ciId: string) => (
+                <div
+                  key={ciId}
+                  className={`p-3 rounded-lg border cursor-pointer transition-all ${
+                    selectedContextCi === ciId
+                      ? "border-purple-500 bg-purple-50 text-purple-900"
+                      : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"
+                  }`}
+                  onClick={() => setSelectedContextCi(ciId)}
+                >
+                  <div className="font-medium">{ciId}</div>
+                  <div className="text-sm text-slate-500">
+                    {(applications as any[])?.filter((app: any) => app.ciId === ciId).length || 0} applications
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Context Document Management */}
+      <div className="lg:col-span-2">
+        <Card className="card-modern">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center space-x-2">
+                <Brain className="h-5 w-5" />
+                <span>Context Documents</span>
+                {selectedContextCi && (
+                  <Badge variant="outline" className="ml-2">{selectedContextCi}</Badge>
+                )}
+              </CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {!selectedContextCi ? (
+              <div className="text-center py-12 text-slate-500">
+                <Brain className="h-12 w-12 mx-auto mb-4 text-slate-300" />
+                <p>Select a CI to manage context documents for Veritas GPT</p>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {/* Upload Section */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* Support Plan */}
+                  <Card className="border-dashed border-2 border-blue-300 hover:border-blue-400 transition-colors">
+                    <CardContent className="p-4 text-center">
+                      <FileText className="h-8 w-8 text-blue-500 mx-auto mb-2" />
+                      <h3 className="font-semibold text-blue-700 mb-2">Support Plan</h3>
+                      <p className="text-xs text-slate-600 mb-3">Upload support plan documentation</p>
+                      <input
+                        type="file"
+                        accept=".pdf,.doc,.docx"
+                        onChange={(e) => handleFileUpload(e, 'support_plan')}
+                        className="hidden"
+                        id="support-plan-upload"
+                        disabled={uploadingFile}
+                      />
+                      <label
+                        htmlFor="support-plan-upload"
+                        className="cursor-pointer inline-flex items-center px-3 py-1 bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 transition-colors text-sm"
+                      >
+                        <Upload className="h-4 w-4 mr-1" />
+                        Upload PDF
+                      </label>
+                    </CardContent>
+                  </Card>
+
+                  {/* Design Diagram */}
+                  <Card className="border-dashed border-2 border-green-300 hover:border-green-400 transition-colors">
+                    <CardContent className="p-4 text-center">
+                      <SettingsIcon className="h-8 w-8 text-green-500 mx-auto mb-2" />
+                      <h3 className="font-semibold text-green-700 mb-2">Design Diagram</h3>
+                      <p className="text-xs text-slate-600 mb-3">Upload system design diagrams</p>
+                      <input
+                        type="file"
+                        accept=".pdf,.doc,.docx"
+                        onChange={(e) => handleFileUpload(e, 'design_diagram')}
+                        className="hidden"
+                        id="design-diagram-upload"
+                        disabled={uploadingFile}
+                      />
+                      <label
+                        htmlFor="design-diagram-upload"
+                        className="cursor-pointer inline-flex items-center px-3 py-1 bg-green-100 text-green-700 rounded-md hover:bg-green-200 transition-colors text-sm"
+                      >
+                        <Upload className="h-4 w-4 mr-1" />
+                        Upload PDF
+                      </label>
+                    </CardContent>
+                  </Card>
+
+                  {/* Additional Supplements */}
+                  <Card className="border-dashed border-2 border-purple-300 hover:border-purple-400 transition-colors">
+                    <CardContent className="p-4 text-center">
+                      <Upload className="h-8 w-8 text-purple-500 mx-auto mb-2" />
+                      <h3 className="font-semibold text-purple-700 mb-2">Additional Supplements</h3>
+                      <p className="text-xs text-slate-600 mb-3">Upload supplementary documents</p>
+                      <input
+                        type="file"
+                        accept=".pdf,.doc,.docx"
+                        onChange={(e) => handleFileUpload(e, 'additional_supplements')}
+                        className="hidden"
+                        id="supplements-upload"
+                        disabled={uploadingFile}
+                      />
+                      <label
+                        htmlFor="supplements-upload"
+                        className="cursor-pointer inline-flex items-center px-3 py-1 bg-purple-100 text-purple-700 rounded-md hover:bg-purple-200 transition-colors text-sm"
+                      >
+                        <Upload className="h-4 w-4 mr-1" />
+                        Upload PDF
+                      </label>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Existing Documents */}
+                <div>
+                  <h3 className="font-semibold mb-4">Uploaded Documents</h3>
+                  {contextDocuments && contextDocuments.length > 0 ? (
+                    <div className="space-y-3">
+                      {contextDocuments.map((doc) => (
+                        <div key={doc.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
+                          <div className="flex items-center space-x-3">
+                            {getDocumentTypeIcon(doc.documentType)}
+                            <div>
+                              <p className="font-medium">{doc.fileName}</p>
+                              <p className="text-sm text-slate-500">
+                                {getDocumentTypeLabel(doc.documentType)} • {Math.round(doc.fileSize / 1024)} KB
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <Badge variant="outline" className="text-xs">
+                              {new Date(doc.uploadedAt).toLocaleDateString()}
+                            </Badge>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => deleteContextDocMutation.mutate(doc.id)}
+                              className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                              disabled={deleteContextDocMutation.isPending}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-slate-500">
+                      <FileText className="h-12 w-12 mx-auto mb-4 text-slate-300" />
+                      <p>No context documents uploaded yet</p>
+                      <p className="text-sm">Upload documents above to provide context for Veritas GPT</p>
+                    </div>
+                  )}
+                </div>
+
+                {uploadingFile && (
+                  <div className="text-center py-4">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mx-auto mb-2"></div>
+                    <p className="text-sm text-slate-600">Uploading document...</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
 
   const renderConnectorsContent = () => (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -586,6 +884,21 @@ export default function Settings() {
                   <Separator />
                   <button
                     className={`w-full text-left px-4 py-3 flex items-center space-x-3 transition-colors ${
+                      activeMenuItem === "context" 
+                        ? "bg-blue-50 text-blue-700 border-r-2 border-blue-500" 
+                        : "hover:bg-slate-50"
+                    }`}
+                    onClick={() => setActiveMenuItem("context")}
+                  >
+                    <Brain className="h-5 w-5" />
+                    <div>
+                      <div className="font-medium">Context Documents</div>
+                      <div className="text-xs text-slate-500">Veritas GPT resources</div>
+                    </div>
+                  </button>
+                  <Separator />
+                  <button
+                    className={`w-full text-left px-4 py-3 flex items-center space-x-3 transition-colors ${
                       activeMenuItem === "database" 
                         ? "bg-blue-50 text-blue-700 border-r-2 border-blue-500" 
                         : "hover:bg-slate-50"
@@ -606,6 +919,7 @@ export default function Settings() {
           {/* Main Content */}
           <div className="flex-1">
             {activeMenuItem === "connectors" && renderConnectorsContent()}
+            {activeMenuItem === "context" && renderContextContent()}
             {activeMenuItem === "database" && renderDatabaseContent()}
           </div>
         </div>
