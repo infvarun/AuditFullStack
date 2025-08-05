@@ -270,6 +270,14 @@ export default function StepFour({ applicationId, onNext, setCanProceed }: StepF
         }, 600);
 
         // Call actual mock agent executor API
+        console.log('Executing agent with data:', {
+          applicationId,
+          questionId: analysis.questionId,
+          prompt: analysis.aiPrompt || analysis.prompt || '',
+          toolType: analysis.toolSuggestion,
+          connectorId: connector.id
+        });
+        
         const response = await executeAgentMutation.mutateAsync({
           questionId: analysis.questionId,
           prompt: analysis.aiPrompt || analysis.prompt || '',
