@@ -103,7 +103,8 @@ export default function StepOne({ applicationId, setApplicationId, onNext, setCa
       setApplicationId(data.id);
       setIsAuditInitiated(true);
       
-      // Invalidate relevant caches to ensure Step 2 sees the updated application
+      // Invalidate relevant caches to ensure Dashboard and Step 2 see the updated application
+      queryClient.invalidateQueries({ queryKey: ["/api/applications"] }); // Main applications list
       queryClient.invalidateQueries({ queryKey: ["/api/applications", data.id] });
       queryClient.invalidateQueries({ queryKey: [`/api/applications/${data.id}`] });
       
