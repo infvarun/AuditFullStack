@@ -1121,110 +1121,16 @@ def test_endpoint():
         'database_available': get_db_connection() is not None
     }), 200
 
-# AI Agent Execution API
+# Alternative Agent Execution API (legacy endpoint)
 @app.route('/api/agents/execute', methods=['POST'])
-def execute_agent():
-    """Execute AI agent for data collection"""
+def execute_agent_legacy():
+    """Legacy agent execution endpoint - redirects to main endpoint"""
     try:
         data = request.get_json()
-        application_id = data.get('applicationId')
-        question_id = data.get('questionId')
-        prompt = data.get('prompt')
-        tool_type = data.get('toolType')
-        connector_id = data.get('connectorId')
-        
-        if not all([application_id, question_id, prompt, tool_type, connector_id]):
-            return jsonify({'error': 'Missing required parameters'}), 400
-        
-        # Get connector details
-        conn = get_db_connection()
-        if not conn:
-            return jsonify({'error': 'Database connection failed'}), 500
-        
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-        cursor.execute("""
-            SELECT name, type, config FROM tool_connectors 
-            WHERE id = %s
-        """, (connector_id,))
-        
-        connector = cursor.fetchone()
-        if not connector:
-            return jsonify({'error': 'Connector not found'}), 404
-        
-        # Create Langchain prompt template for agent execution
-        system_template = """You are an expert data collection agent specializing in {tool_type}. 
-Your task is to collect specific audit data based on the given prompt.
-
-Connector: {connector_name} ({connector_type})
-Configuration: {connector_config}
-
-Provide a detailed response about what data would be collected, how it would be queried/accessed, 
-and what the expected results would look like. Format your response as a structured data collection report."""
-
-        human_template = """Execute the following data collection task:
-
-{prompt}
-
-Please provide:
-1. Data collection method and approach
-2. Expected data sources and queries/searches
-3. Sample of what the collected data would contain
-4. Number of records or data points expected
-5. Any potential challenges or limitations"""
-
-        # Create and format the prompt
-        agent_prompt = ChatPromptTemplate.from_messages([
-            SystemMessagePromptTemplate.from_template(system_template),
-            HumanMessagePromptTemplate.from_template(human_template)
-        ])
-        
-        formatted_messages = agent_prompt.format_messages(
-            tool_type=tool_type,
-            connector_name=connector['name'],
-            connector_type=connector['type'],
-            connector_config=connector['config'] if connector['config'] else 'Default configuration',
-            prompt=prompt
-        )
-        
-        # Execute using Langchain
-        response = llm.invoke(formatted_messages)
-        ai_response = response.content
-        
-        # Store execution result in database
-        cursor.execute("""
-            INSERT INTO agent_executions 
-            (application_id, question_id, tool_type, connector_id, prompt, result, status, created_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, NOW())
-        """, (
-            application_id,
-            question_id,
-            tool_type,
-            connector_id,
-            prompt,
-            ai_response,
-            'completed'
-        ))
-        
-        conn.commit()
-        
-        return jsonify({
-            'status': 'completed',
-            'result': {
-                'data': ai_response,
-                'connector': connector['name'],
-                'tool_type': tool_type,
-                'records': 'Varies based on query',
-                'timestamp': datetime.now().isoformat()
-            }
-        }), 200
-        
+        # Redirect to main agent execution endpoint
+        return jsonify({'redirect': '/api/agent/execute', 'message': 'Please use /api/agent/execute endpoint'}), 302
     except Exception as e:
-        print(f"Error in execute_agent: {e}")
-        return jsonify({'error': f'Agent execution failed: {str(e)}'}), 500
-    finally:
-        if conn:
-            cursor.close()
-            conn.close()
+        return jsonify({'error': str(e)}), 500
 
 # Get agent execution results
 @app.route('/api/agents/executions/<int:application_id>', methods=['GET'])
