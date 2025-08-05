@@ -77,7 +77,8 @@ export default function Dashboard() {
   const recentApplications = applications.slice(-3);
 
   const getStatusColor = (status: string) => {
-    switch (status) {
+    const normalizedStatus = status?.toLowerCase().replace(' ', '_');
+    switch (normalizedStatus) {
       case "completed": return "text-green-600 bg-green-50";
       case "in_progress": return "text-blue-600 bg-blue-50";
       case "pending": return "text-yellow-600 bg-yellow-50";
@@ -86,7 +87,8 @@ export default function Dashboard() {
   };
 
   const getStatusIcon = (status: string) => {
-    switch (status) {
+    const normalizedStatus = status?.toLowerCase().replace(' ', '_');
+    switch (normalizedStatus) {
       case "completed": return <CheckCircle className="h-4 w-4" />;
       case "in_progress": return <Clock className="h-4 w-4" />;
       case "pending": return <AlertCircle className="h-4 w-4" />;
@@ -174,9 +176,9 @@ export default function Dashboard() {
                         </div>
                       </div>
                       <div className="flex items-center space-x-2">
-                        <div className={`flex items-center space-x-1 px-2 py-1 rounded-full text-xs ${getStatusColor("in_progress")}`}>
-                          {getStatusIcon("in_progress")}
-                          <span>In Progress</span>
+                        <div className={`flex items-center space-x-1 px-2 py-1 rounded-full text-xs ${getStatusColor(app.status || "In Progress")}`}>
+                          {getStatusIcon(app.status || "In Progress")}
+                          <span>{app.status || "In Progress"}</span>
                         </div>
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
@@ -290,7 +292,7 @@ export default function Dashboard() {
                       <br />
                       Created: {app.createdAt ? new Date(app.createdAt).toLocaleDateString() : 'Recently created'}
                       <br />
-                      Status: In Progress
+                      Status: {app.status || 'In Progress'}
                     </p>
                   </CardContent>
                 </Card>

@@ -10,6 +10,7 @@ export const applications = pgTable("applications", {
   startDate: text("start_date").notNull(),
   endDate: text("end_date").notNull(),
   settings: json("settings"),
+  status: text("status").default("In Progress"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
