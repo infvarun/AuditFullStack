@@ -2343,8 +2343,10 @@ def veritas_gpt_chat():
         # Initialize context information
         context_docs = []
         data_requests = []
+        execution_results = []
         context_info = []
         data_collection_info = []
+        execution_info = []
         
         # Try to get database connection and fetch context, but don't fail if unavailable
         try:
@@ -2377,6 +2379,19 @@ def veritas_gpt_chat():
                 except Exception as db_error:
                     print(f"Data requests query failed: {db_error}")
                     data_requests = []
+                
+                # Try to get Step 4 execution results for this audit
+                try:
+                    cursor.execute("""
+                        SELECT question_id, question_text, answer, status, tool_name, findings
+                        FROM execution_results 
+                        WHERE application_id = %s
+                        ORDER BY question_id
+                    """, (audit_id,))
+                    execution_results = cursor.fetchall() or []
+                except Exception as db_error:
+                    print(f"Execution results query failed: {db_error}")
+                    execution_results = []
         
         except Exception as conn_error:
             print(f"Database connection failed: {conn_error}")
@@ -2410,32 +2425,64 @@ def veritas_gpt_chat():
         except Exception as e:
             print(f"Error building data collection info: {e}")
         
+        # Build execution results information (Step 4 completed results)
+        try:
+            completed_count = 0
+            total_count = len(execution_results)
+            sample_findings = []
+            
+            for result in execution_results:
+                if result.get('status') == 'completed':
+                    completed_count += 1
+                    if len(sample_findings) < 3 and result.get('findings'):
+                        question_text = result.get('question_text', 'Unknown Question')[:50] + '...' if len(result.get('question_text', '')) > 50 else result.get('question_text', '')
+                        findings = result.get('findings', '')[:100] + '...' if len(result.get('findings', '')) > 100 else result.get('findings', '')
+                        sample_findings.append(f"  • {question_text}: {findings}")
+            
+            if total_count > 0:
+                execution_info.append(f"- Execution Status: {completed_count}/{total_count} questions completed")
+                if sample_findings:
+                    execution_info.append("- Sample Findings:")
+                    execution_info.extend(sample_findings)
+        except Exception as e:
+            print(f"Error building execution info: {e}")
+        
         # Create context-aware system prompt with graceful degradation
         context_section = chr(10).join(context_info) if context_info else "No context documents are currently available for this CI."
         data_collection_section = chr(10).join(data_collection_info) if data_collection_info else "No data collection forms are currently available for this audit."
+        execution_section = chr(10).join(execution_info) if execution_info else "No execution results are currently available for this audit."
         
         system_prompt = f"""You are Veritas GPT, an AI assistant specialized in audit data collection and analysis for audit "{audit_name}" (CI {ci_id}).
 
 CONTEXT DOCUMENTS AVAILABLE FOR THIS CI:
 {context_section}
 
-DATA COLLECTION FORMS FOR THIS AUDIT:
+DATA COLLECTION FORMS FOR THIS AUDIT (Step 2):
 {data_collection_section}
+
+EXECUTION RESULTS FOR THIS AUDIT (Step 4):
+{execution_section}
 
 Your role is to:
 1. Provide accurate, helpful responses about audit processes and data collection
-2. Reference available context documents and data collection forms when relevant
-3. Help users understand audit questions, requirements, and workflows
-4. Provide general audit guidance even when specific context is limited
+2. Reference available context documents, data collection forms, AND execution results when relevant
+3. Help users understand audit questions, requirements, workflows, and completed findings
+4. Analyze completed execution results to provide insights and recommendations
 5. Maintain a professional, helpful tone focused on audit excellence
 
-Even without complete context, you can still help with:
+You have access to:
+- Context documents uploaded for the CI system
+- Data collection forms with audit questions and categories (Step 2)
+- Completed execution results with findings and answers (Step 4)
 - General audit best practices and methodologies
-- Common audit questions and data collection strategies  
-- Workflow guidance and process recommendations
-- Industry-standard audit approaches
 
-Please provide detailed, actionable responses while being transparent about available context. If specific context is limited, focus on general audit guidance that would be valuable for this type of audit."""
+When answering questions, leverage all available context including:
+- Specific audit questions from data collection forms
+- Completed findings and results from execution
+- Context about the CI system being audited
+- Industry-standard audit approaches and recommendations
+
+Please provide detailed, actionable responses while referencing the specific context available for this audit."""
         
         # Use Langchain to generate response (ensure we're using Langchain not direct OpenAI)
         try:
@@ -2469,6 +2516,7 @@ Please try your question again, or contact your system administrator if the issu
             'response': response_content,
             'contextDocuments': len(context_docs),
             'dataCollectionForms': len(data_requests),
+            'executionResults': len(execution_results),
             'auditName': audit_name,
             'timestamp': datetime.now().isoformat(),
             'status': 'success'
@@ -2493,6 +2541,7 @@ Please try again or contact support if issues persist."""
             'response': error_response,
             'contextDocuments': 0,
             'dataCollectionForms': 0,
+            'executionResults': 0,
             'auditName': audit_name,
             'timestamp': datetime.now().isoformat(),
             'status': 'error_handled'

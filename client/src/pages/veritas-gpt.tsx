@@ -24,6 +24,8 @@ import { ScrollArea } from "../components/ui/scroll-area";
 import type { Application, ContextDocument } from "@shared/schema";
 import { apiRequest, queryClient } from "../lib/queryClient";
 import { useToast } from "../hooks/use-toast";
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface Message {
   id: string;
@@ -378,7 +380,15 @@ export default function VeritasGPT() {
                                   <Bot className="h-5 w-5 text-purple-600 mt-0.5 flex-shrink-0" />
                                 )}
                                 <div className="flex-1">
-                                  <p className="text-sm">{msg.content}</p>
+                                  {msg.role === 'assistant' ? (
+                                    <div className="text-sm prose prose-sm max-w-none prose-slate">
+                                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                        {msg.content}
+                                      </ReactMarkdown>
+                                    </div>
+                                  ) : (
+                                    <p className="text-sm">{msg.content}</p>
+                                  )}
                                   {msg.thinking && msg.thinking.length > 0 && (
                                     <div className="mt-3 pt-3 border-t border-slate-200">
                                       <p className="text-xs text-slate-600 mb-2">Context used:</p>
