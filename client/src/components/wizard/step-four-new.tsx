@@ -107,6 +107,16 @@ export default function StepFour({ applicationId, onNext, setCanProceed }: StepF
       toolType: string;
       connectorId: number;
     }) => {
+      if (!applicationId) {
+        throw new Error('Application ID is required');
+      }
+      if (!questionId) {
+        throw new Error('Question ID is required');
+      }
+      if (!prompt) {
+        throw new Error('Prompt is required');
+      }
+      
       const response = await apiRequest("POST", "/api/agents/execute", {
         applicationId,
         questionId,
