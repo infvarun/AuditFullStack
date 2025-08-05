@@ -444,23 +444,29 @@ export default function VeritasGPT() {
                 {/* Input Area */}
                 {selectedAuditId && (
                   <div className="border-t pt-4">
-                    <div className="flex space-x-3 items-end">
-                      <div className="flex-1">
-                        <textarea
-                          value={message}
-                          onChange={(e) => setMessage(e.target.value)}
-                          onKeyPress={handleKeyPress}
-                          placeholder="Ask about your audit context..."
-                          disabled={isLoading}
-                          rows={3}
-                          className="w-full resize-none rounded-lg border border-slate-200 px-4 py-3 text-sm placeholder:text-slate-500 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-                          style={{ minHeight: '80px' }}
-                        />
-                      </div>
+                    <div className="flex items-center space-x-2 bg-slate-50 rounded-lg p-2 border border-slate-200 focus-within:border-purple-500 focus-within:ring-2 focus-within:ring-purple-500/20">
+                      <textarea
+                        value={message}
+                        onChange={(e) => setMessage(e.target.value)}
+                        onKeyPress={handleKeyPress}
+                        placeholder="Ask about your audit context..."
+                        disabled={isLoading}
+                        rows={1}
+                        className="flex-1 resize-none bg-transparent border-none outline-none text-sm placeholder:text-slate-500 disabled:cursor-not-allowed disabled:opacity-50 min-h-[40px] max-h-[120px] py-2 px-2"
+                        style={{ 
+                          lineHeight: '1.5',
+                          overflowY: message.split('\n').length > 2 ? 'auto' : 'hidden'
+                        }}
+                        onInput={(e) => {
+                          const target = e.target as HTMLTextAreaElement;
+                          target.style.height = 'auto';
+                          target.style.height = Math.min(target.scrollHeight, 120) + 'px';
+                        }}
+                      />
                       <Button
                         onClick={handleSendMessage}
                         disabled={!message.trim() || isLoading}
-                        className="bg-purple-600 hover:bg-purple-700 text-white h-12 w-12 rounded-lg flex-shrink-0"
+                        className="bg-purple-600 hover:bg-purple-700 text-white h-8 w-8 rounded-md flex-shrink-0 p-0"
                         size="sm"
                       >
                         <Send className="h-4 w-4" />

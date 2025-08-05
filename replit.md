@@ -75,3 +75,4 @@ Preferred communication style: Simple, everyday language.
 - ✅ **Excel Export**: Populated data collection sheets with audit answers
 - ✅ **Status Management**: Bidirectional audit completion with confirmation dialogs
 - ✅ **Real Data Integration**: No mock data - all results from authentic AI analysis
+- ✅ **Veritas GPT Enhancement**: Multi-audit support with context-aware chat interface including improved input design
