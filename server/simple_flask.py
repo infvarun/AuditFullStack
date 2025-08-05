@@ -914,6 +914,151 @@ def health_check():
     return jsonify({'status': 'healthy', 'service': 'Simple Flask API'}), 200
 
 # Database health check
+@app.route('/api/agent/execute', methods=['POST'])
+def execute_agent():
+    """Execute AI agents to collect data using mock connectors for demo"""
+    try:
+        data = request.get_json()
+        application_id = data.get('applicationId')
+        
+        if not application_id:
+            return jsonify({'error': 'Application ID is required'}), 400
+        
+        # Import demo components
+        import sys
+        import os
+        sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'demo'))
+        
+        try:
+            from mock_agent_executor import demo_agent
+        except ImportError as e:
+            return jsonify({'error': f'Demo components not available: {str(e)}'}), 500
+        
+        # Get question analyses for this application
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'error': 'Database connection failed'}), 500
+        
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Get all question analyses
+        cursor.execute("""
+            SELECT qa.*, app.audit_name, app.ci_id
+            FROM question_analyses qa
+            JOIN applications app ON qa.application_id = app.id
+            WHERE qa.application_id = %s
+            ORDER BY qa.created_at
+        """, (application_id,))
+        
+        analyses = cursor.fetchall()
+        
+        if not analyses:
+            return jsonify({'error': 'No question analyses found for this application'}), 404
+        
+        # Convert database results to format expected by mock agent
+        question_analyses = []
+        for analysis in analyses:
+            # Handle both single and multiple tool suggestions
+            tool_suggestion = analysis['tool_suggestion']
+            if isinstance(tool_suggestion, str):
+                try:
+                    # Try to parse as JSON array
+                    if tool_suggestion.startswith('['):
+                        tool_suggestion = json.loads(tool_suggestion)
+                    # If it's quoted, remove quotes
+                    elif tool_suggestion.startswith('"') and tool_suggestion.endswith('"'):
+                        tool_suggestion = tool_suggestion[1:-1]
+                except json.JSONDecodeError:
+                    pass  # Keep as string if not valid JSON
+            
+            question_analysis = {
+                'questionId': analysis['question_id'],
+                'originalQuestion': analysis['original_question'],
+                'toolSuggestion': tool_suggestion,
+                'aiPrompt': analysis['ai_prompt'],
+                'category': analysis['category'],
+                'subcategory': analysis['subcategory'],
+                'connectorReason': analysis['connector_reason']
+            }
+            question_analyses.append(question_analysis)
+        
+        # Execute mock agent data collection
+        execution_results = []
+        
+        for question_analysis in question_analyses:
+            # Execute data collection using mock connectors
+            execution_result = demo_agent.execute_data_collection(question_analysis)
+            
+            # Store execution result in database
+            cursor.execute("""
+                INSERT INTO agent_executions 
+                (application_id, question_id, tool_used, execution_time, 
+                 data_collected, findings, status, confidence, risk_level, compliance_status, executed_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+            """, (
+                application_id,
+                execution_result['questionId'],
+                json.dumps(execution_result['toolsUsed']),
+                execution_result['duration'],
+                execution_result['dataPoints'],
+                json.dumps({
+                    'findings': execution_result['findings'],
+                    'analysis': execution_result['analysis'],
+                    'collectedData': {k: len(v) if isinstance(v, list) else 1 for k, v in execution_result['collectedData'].items()}
+                }),
+                execution_result['status'],
+                execution_result['analysis']['confidence'],
+                execution_result['riskLevel'],
+                execution_result['complianceStatus'],
+                datetime.now()
+            ))
+            
+            execution_id = cursor.fetchone()['id']
+            execution_result['databaseId'] = execution_id
+            
+            execution_results.append(execution_result)
+        
+        conn.commit()
+        
+        # Generate summary statistics
+        total_data_points = sum(result['dataPoints'] for result in execution_results)
+        avg_confidence = sum(result['analysis']['confidence'] for result in execution_results) / len(execution_results)
+        risk_distribution = {}
+        for result in execution_results:
+            risk = result['riskLevel']
+            risk_distribution[risk] = risk_distribution.get(risk, 0) + 1
+        
+        return jsonify({
+            'message': f'Mock agent execution completed for {len(execution_results)} questions',
+            'totalExecutions': len(execution_results),
+            'totalDataPoints': total_data_points,
+            'averageConfidence': round(avg_confidence, 3),
+            'riskDistribution': risk_distribution,
+            'executions': execution_results,
+            'summary': {
+                'toolsUsed': list(set(tool for result in execution_results for tool in result['toolsUsed'])),
+                'avgExecutionTime': round(sum(result['duration'] for result in execution_results) / len(execution_results), 2),
+                'complianceOverview': {
+                    'compliant': len([r for r in execution_results if r['complianceStatus'] == 'Compliant']),
+                    'partiallyCompliant': len([r for r in execution_results if r['complianceStatus'] == 'Partially Compliant']),
+                    'nonCompliant': len([r for r in execution_results if r['complianceStatus'] == 'Non-Compliant'])
+                }
+            }
+        }), 200
+        
+    except Exception as e:
+        if 'conn' in locals() and conn:
+            conn.rollback()
+        return jsonify({
+            'error': f'Error executing mock agents: {str(e)}'
+        }), 500
+        
+    finally:
+        if 'conn' in locals() and conn:
+            cursor.close()
+            conn.close()
+
 @app.route('/api/database/health', methods=['GET'])
 def database_health():
     """Database connectivity health check"""
