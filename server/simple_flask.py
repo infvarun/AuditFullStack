@@ -1323,44 +1323,7 @@ def delete_tool_connector(connector_id):
             cursor.close()
             conn.close()
 
-@app.route('/api/connectors/ci/<ci_id>', methods=['GET'])
-def get_connectors_by_ci(ci_id):
-    """Get tool connectors for specific CI ID"""
-    try:
-        conn = get_db_connection()
-        if not conn:
-            return jsonify({'error': 'Database connection failed'}), 500
-        
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-        cursor.execute("""
-            SELECT id, application_id, ci_id, connector_name, connector_type, configuration, status, created_at
-            FROM tool_connectors 
-            WHERE ci_id = %s
-            ORDER BY created_at DESC
-        """, (ci_id,))
-        
-        connectors = []
-        for row in cursor.fetchall():
-            connector_data = {
-                'id': row['id'],
-                'applicationId': row['application_id'],
-                'ciId': row['ci_id'],
-                'connectorName': row['connector_name'],
-                'connectorType': row['connector_type'],
-                'configuration': row['configuration'],
-                'status': row['status'],
-                'createdAt': row['created_at']
-            }
-            connectors.append(connector_data)
-        
-        return jsonify(connectors), 200
-        
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-    finally:
-        if conn:
-            cursor.close()
-            conn.close()
+# This endpoint was moved below to avoid duplication
 
 @app.route('/api/connectors/<int:connector_id>/test', methods=['POST'])
 def test_connector_connection(connector_id):
@@ -1828,6 +1791,47 @@ def database_health_check():
             'connection': False,
             'message': str(e)
         }), 500
+    finally:
+        if conn:
+            cursor.close()
+            conn.close()
+
+# Get connectors by CI ID endpoint (for Settings page)
+@app.route('/api/connectors/ci/<string:ci_id>', methods=['GET'])
+def get_connectors_by_ci(ci_id):
+    """Get all connectors for a specific CI ID"""
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'error': 'Database connection failed'}), 500
+        
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute("""
+            SELECT id, application_id, ci_id, connector_name, connector_type, 
+                   configuration, status, created_at
+            FROM tool_connectors 
+            WHERE ci_id = %s
+            ORDER BY created_at DESC
+        """, (ci_id,))
+        
+        connectors = []
+        for row in cursor.fetchall():
+            connector_data = {
+                'id': row['id'],
+                'applicationId': row['application_id'],
+                'ciId': row['ci_id'],
+                'connectorName': row['connector_name'],
+                'connectorType': row['connector_type'],
+                'configuration': json.loads(row['configuration']) if isinstance(row['configuration'], str) else (row['configuration'] if row['configuration'] else {}),
+                'status': row['status'],
+                'createdAt': row['created_at']
+            }
+            connectors.append(connector_data)
+        
+        return jsonify(connectors), 200
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
     finally:
         if conn:
             cursor.close()
