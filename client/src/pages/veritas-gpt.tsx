@@ -161,7 +161,7 @@ export default function VeritasGPT() {
     });
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const handleKeyPress = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSendMessage();
@@ -443,22 +443,29 @@ export default function VeritasGPT() {
 
                 {/* Input Area */}
                 {selectedAuditId && (
-                  <div className="flex space-x-2">
-                    <Input
-                      value={message}
-                      onChange={(e) => setMessage(e.target.value)}
-                      onKeyPress={handleKeyPress}
-                      placeholder="Ask about your audit context..."
-                      disabled={isLoading}
-                      className="flex-1"
-                    />
-                    <Button
-                      onClick={handleSendMessage}
-                      disabled={!message.trim() || isLoading}
-                      className="bg-purple-600 hover:bg-purple-700 text-white"
-                    >
-                      <Send className="h-4 w-4" />
-                    </Button>
+                  <div className="border-t pt-4">
+                    <div className="flex space-x-3 items-end">
+                      <div className="flex-1">
+                        <textarea
+                          value={message}
+                          onChange={(e) => setMessage(e.target.value)}
+                          onKeyPress={handleKeyPress}
+                          placeholder="Ask about your audit context..."
+                          disabled={isLoading}
+                          rows={3}
+                          className="w-full resize-none rounded-lg border border-slate-200 px-4 py-3 text-sm placeholder:text-slate-500 focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                          style={{ minHeight: '80px' }}
+                        />
+                      </div>
+                      <Button
+                        onClick={handleSendMessage}
+                        disabled={!message.trim() || isLoading}
+                        className="bg-purple-600 hover:bg-purple-700 text-white h-12 w-12 rounded-lg flex-shrink-0"
+                        size="sm"
+                      >
+                        <Send className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
                 )}
               </CardContent>
