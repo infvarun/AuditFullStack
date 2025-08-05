@@ -1123,7 +1123,7 @@ def test_endpoint():
 
 # Alternative Agent Execution API (legacy endpoint)
 @app.route('/api/agents/execute', methods=['POST'])
-def execute_agent():
+def execute_agent_request():
     """Execute AI agent for data collection with mock realistic responses"""
     try:
         import sys
