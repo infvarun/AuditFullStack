@@ -1,10 +1,23 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { TrendingUp, CheckCircle, Clock, XCircle, CircleHelp, FileText, Download, FolderOpen } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "../ui/alert-dialog";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 interface StepFiveProps {
   applicationId: number | null;
@@ -12,6 +25,9 @@ interface StepFiveProps {
 }
 
 export default function StepFive({ applicationId, setCanProceed }: StepFiveProps) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
   // Get saved answers from Step 4 execution
   const { data: savedAnswers = [], isLoading } = useQuery({
     queryKey: [`/api/questions/answers/${applicationId}`],
@@ -22,6 +38,37 @@ export default function StepFive({ applicationId, setCanProceed }: StepFiveProps
   const { data: analyses = [] } = useQuery({
     queryKey: [`/api/questions/analyses/${applicationId}`],
     enabled: !!applicationId,
+  });
+
+  // Get application data
+  const { data: applicationData } = useQuery({
+    queryKey: [`/api/applications/${applicationId}`],
+    enabled: !!applicationId,
+  });
+
+  // Mutation to complete audit
+  const completeAuditMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("PUT", `/api/applications/${applicationId}`, {
+        status: "Completed"
+      });
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Audit Completed",
+        description: "The audit has been successfully marked as completed.",
+      });
+      // Invalidate and refetch application data
+      queryClient.invalidateQueries({ queryKey: [`/api/applications/${applicationId}`] });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: "Failed to complete audit. Please try again.",
+        variant: "destructive",
+      });
+    }
   });
 
   // Step 5 is the final step, no next button needed
@@ -238,6 +285,71 @@ export default function StepFive({ applicationId, setCanProceed }: StepFiveProps
                   <Download className="h-4 w-4 mr-2" />
                   Download
                 </Button>
+              </div>
+            </div>
+          </div>
+
+          {/* Finish Audit Section */}
+          <div className="bg-gradient-to-r from-green-50 to-blue-50 rounded-lg p-6 border border-green-200">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900 mb-2">
+                  Complete Audit
+                </h3>
+                <p className="text-sm text-slate-600 mb-4">
+                  Mark this audit as completed. This will finalize all data collection and generate the final report.
+                </p>
+                {applicationData?.status === 'Completed' && (
+                  <Badge className="bg-green-100 text-green-800 mb-2">
+                    Audit Completed
+                  </Badge>
+                )}
+              </div>
+              <div className="ml-6">
+                {applicationData?.status === 'Completed' ? (
+                  <Button disabled variant="outline">
+                    <CheckCircle className="h-4 w-4 mr-2" />
+                    Already Completed
+                  </Button>
+                ) : (
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button 
+                        size="lg" 
+                        className="bg-green-600 hover:bg-green-700 text-white"
+                        disabled={completeAuditMutation.isPending}
+                      >
+                        <CheckCircle className="h-4 w-4 mr-2" />
+                        {completeAuditMutation.isPending ? 'Completing...' : 'Finish Audit'}
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Complete Audit</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Are you sure you want to mark this audit as completed? This action will:
+                          <ul className="list-disc list-inside mt-2 space-y-1">
+                            <li>Finalize all data collection results</li>
+                            <li>Lock the audit from further changes</li>
+                            <li>Generate the final audit report</li>
+                            <li>Update the audit status to "Completed"</li>
+                          </ul>
+                          <br />
+                          This action cannot be undone.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction 
+                          onClick={() => completeAuditMutation.mutate()}
+                          className="bg-green-600 hover:bg-green-700"
+                        >
+                          Yes, Complete Audit
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                )}
               </div>
             </div>
           </div>

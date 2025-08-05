@@ -201,7 +201,8 @@ def get_application(application_id):
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         cursor.execute("""
             SELECT id, name, audit_name, ci_id, 
-                   start_date, end_date, enable_followup_questions, created_at 
+                   start_date, end_date, enable_followup_questions, created_at,
+                   status
             FROM applications 
             WHERE id = %s
         """, (application_id,))
@@ -218,7 +219,8 @@ def get_application(application_id):
             'auditDateFrom': row['start_date'],
             'auditDateTo': row['end_date'],
             'enableFollowupQuestions': row['enable_followup_questions'] or False,
-            'createdAt': row['created_at']
+            'createdAt': row['created_at'],
+            'status': row.get('status', 'In Progress')
         }
         
         return jsonify(app_data), 200
@@ -251,33 +253,45 @@ def update_application(application_id):
         settings = data.get('settings', {})
         enable_followup = settings.get('enableFollowUpQuestions', False)
         
-        # Update the application
-        cursor.execute("""
-            UPDATE applications 
-            SET name = %s, audit_name = %s, ci_id = %s, start_date = %s, end_date = %s, enable_followup_questions = %s
-            WHERE id = %s
-            RETURNING id, name, audit_name, ci_id, start_date, end_date, enable_followup_questions, created_at
-        """, (
-            data.get('name') or data['auditName'],
-            data['auditName'],
-            data['ciId'],
-            data.get('startDate') or data.get('auditDateFrom'),
-            data.get('endDate') or data.get('auditDateTo'),
-            enable_followup,
-            application_id
-        ))
+        # Handle different update scenarios
+        if 'status' in data and len(data) == 1:
+            # Status-only update
+            cursor.execute("""
+                UPDATE applications 
+                SET status = %s
+                WHERE id = %s
+                RETURNING id, name, audit_name, ci_id, start_date, end_date, enable_followup_questions, created_at, status
+            """, (data['status'], application_id))
+        else:
+            # Full application update
+            cursor.execute("""
+                UPDATE applications 
+                SET name = %s, audit_name = %s, ci_id = %s, start_date = %s, end_date = %s, enable_followup_questions = %s
+                WHERE id = %s
+                RETURNING id, name, audit_name, ci_id, start_date, end_date, enable_followup_questions, created_at, status
+            """, (
+                data.get('name') or data['auditName'],
+                data['auditName'],
+                data['ciId'],
+                data.get('startDate') or data.get('auditDateFrom'),
+                data.get('endDate') or data.get('auditDateTo'),
+                enable_followup,
+                application_id
+            ))
         
         row = cursor.fetchone()
         conn.commit()
         
         app_data = {
             'id': row['id'],
+            'name': row['name'],
             'auditName': row['audit_name'],
             'ciId': row['ci_id'],
             'auditDateFrom': row['start_date'],
             'auditDateTo': row['end_date'],
             'enableFollowupQuestions': row['enable_followup_questions'],
-            'createdAt': row['created_at']
+            'createdAt': row['created_at'],
+            'status': row.get('status', 'In Progress')
         }
         
         return jsonify(app_data), 200
