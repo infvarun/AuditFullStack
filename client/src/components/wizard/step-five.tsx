@@ -71,6 +71,31 @@ export default function StepFive({ applicationId, setCanProceed }: StepFiveProps
     }
   });
 
+  // Mutation to reset audit status
+  const resetAuditMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("PUT", `/api/applications/${applicationId}`, {
+        status: "In Progress"
+      });
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Status Reset",
+        description: "The audit status has been reset to 'In Progress'.",
+      });
+      // Invalidate and refetch application data
+      queryClient.invalidateQueries({ queryKey: [`/api/applications/${applicationId}`] });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: "Failed to reset audit status. Please try again.",
+        variant: "destructive",
+      });
+    }
+  });
+
   // Step 5 is the final step, no next button needed
   // Always allow proceeding (validation removed)
   useEffect(() => {
@@ -289,15 +314,21 @@ export default function StepFive({ applicationId, setCanProceed }: StepFiveProps
             </div>
           </div>
 
-          {/* Finish Audit Section */}
+          {/* Audit Status Management Section */}
           <div className="bg-gradient-to-r from-green-50 to-blue-50 rounded-lg p-6 border border-green-200">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-lg font-semibold text-slate-900 mb-2">
-                  Complete Audit
+                  Audit Status Management
                 </h3>
                 <p className="text-sm text-slate-600 mb-4">
-                  Mark this audit as completed. This will finalize all data collection and generate the final report.
+                  Current status: <strong>{applicationData?.status || 'In Progress'}</strong>
+                </p>
+                <p className="text-sm text-slate-600 mb-4">
+                  {applicationData?.status === 'Completed' 
+                    ? 'This audit has been marked as completed. You can reset it to "In Progress" if needed.'
+                    : 'Mark this audit as completed to finalize all data collection and generate the final report.'
+                  }
                 </p>
                 {applicationData?.status === 'Completed' && (
                   <Badge className="bg-green-100 text-green-800 mb-2">
@@ -305,12 +336,43 @@ export default function StepFive({ applicationId, setCanProceed }: StepFiveProps
                   </Badge>
                 )}
               </div>
-              <div className="ml-6">
+              <div className="ml-6 flex gap-3">
                 {applicationData?.status === 'Completed' ? (
-                  <Button disabled variant="outline">
-                    <CheckCircle className="h-4 w-4 mr-2" />
-                    Already Completed
-                  </Button>
+                  <>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button 
+                          variant="outline"
+                          disabled={completeAuditMutation.isPending}
+                        >
+                          <Clock className="h-4 w-4 mr-2" />
+                          Reset to In Progress
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Reset Audit Status</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Are you sure you want to reset this audit status back to "In Progress"? 
+                            This will allow further modifications to the audit data and results.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction 
+                            onClick={() => resetAuditMutation.mutate()}
+                            className="bg-orange-600 hover:bg-orange-700"
+                          >
+                            Yes, Reset Status
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                    <Button disabled variant="default" className="bg-green-600">
+                      <CheckCircle className="h-4 w-4 mr-2" />
+                      Already Completed
+                    </Button>
+                  </>
                 ) : (
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
@@ -329,13 +391,13 @@ export default function StepFive({ applicationId, setCanProceed }: StepFiveProps
                         <AlertDialogDescription>
                           Are you sure you want to mark this audit as completed? This action will:
                           <ul className="list-disc list-inside mt-2 space-y-1">
-                            <li>Finalize all data collection results</li>
-                            <li>Lock the audit from further changes</li>
-                            <li>Generate the final audit report</li>
                             <li>Update the audit status to "Completed"</li>
+                            <li>Finalize all data collection results</li>
+                            <li>Generate the final audit report</li>
+                            <li>Make the audit visible as completed in the dashboard</li>
                           </ul>
                           <br />
-                          This action cannot be undone.
+                          You can reset the status later if needed.
                         </AlertDialogDescription>
                       </AlertDialogHeader>
                       <AlertDialogFooter>
