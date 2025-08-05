@@ -17,11 +17,11 @@ interface StepFourProps {
 }
 
 interface QuestionAnalysis {
-  questionId: string;
+  id: string;
   originalQuestion: string;
   category: string;
   subcategory: string;
-  aiPrompt: string;
+  prompt: string;
   toolSuggestion: string;
   connectorReason: string;
   connectorToUse: string;
@@ -166,7 +166,7 @@ export default function StepFour({ applicationId, onNext, setCanProceed }: StepF
     const completedExecutions = Object.values(executions).filter(e => e.status === 'completed');
     
     const savePromises = completedExecutions.map(execution => {
-      const analysis = analyses.find(a => a.questionId === execution.questionId);
+      const analysis = analyses.find(a => a.id === execution.questionId);
       return saveResultsMutation.mutateAsync({
         ...execution,
         toolType: analysis?.toolSuggestion
@@ -198,8 +198,8 @@ export default function StepFour({ applicationId, onNext, setCanProceed }: StepF
         const mappedToolType = TOOL_ID_MAPPING[analysis.toolSuggestion] || analysis.toolSuggestion;
         const connector = connectors.find(c => c.connectorType === mappedToolType && c.status === 'active');
         
-        initialExecutions[analysis.questionId] = {
-          questionId: analysis.questionId,
+        initialExecutions[analysis.id] = {
+          questionId: analysis.id,
           status: connector ? 'pending' : 'no_connector',
           progress: 0
         };
@@ -245,8 +245,8 @@ export default function StepFour({ applicationId, onNext, setCanProceed }: StepF
       if (!connector) {
         setExecutions(prev => ({
           ...prev,
-          [analysis.questionId]: {
-            ...prev[analysis.questionId],
+          [analysis.id]: {
+            ...prev[analysis.id],
             status: 'no_connector',
             error: 'No connector configured for this tool type'
           }
@@ -257,8 +257,8 @@ export default function StepFour({ applicationId, onNext, setCanProceed }: StepF
       // Update status to running
       setExecutions(prev => ({
         ...prev,
-        [analysis.questionId]: {
-          ...prev[analysis.questionId],
+        [analysis.id]: {
+          ...prev[analysis.id],
           status: 'running',
           startTime: new Date(),
           progress: 0
@@ -272,8 +272,8 @@ export default function StepFour({ applicationId, onNext, setCanProceed }: StepF
           currentProgress = Math.min(currentProgress + 15, 85);
           setExecutions(prev => ({
             ...prev,
-            [analysis.questionId]: {
-              ...prev[analysis.questionId],
+            [analysis.id]: {
+              ...prev[analysis.id],
               progress: currentProgress
             }
           }));
@@ -282,8 +282,8 @@ export default function StepFour({ applicationId, onNext, setCanProceed }: StepF
         // Call actual mock agent executor API
         
         const response = await executeAgentMutation.mutateAsync({
-          questionId: analysis.questionId,
-          prompt: analysis.aiPrompt || analysis.prompt || '',
+          questionId: analysis.id,
+          prompt: analysis.prompt || analysis.originalQuestion || '',
           toolType: analysis.toolSuggestion,
           connectorId: connector.id
         });
@@ -293,8 +293,8 @@ export default function StepFour({ applicationId, onNext, setCanProceed }: StepF
         // Process the realistic mock result
         setExecutions(prev => ({
           ...prev,
-          [analysis.questionId]: {
-            ...prev[analysis.questionId],
+          [analysis.id]: {
+            ...prev[analysis.id],
             status: 'completed',
             progress: 100,
             endTime: new Date(),
@@ -313,8 +313,8 @@ export default function StepFour({ applicationId, onNext, setCanProceed }: StepF
       } catch (error) {
         setExecutions(prev => ({
           ...prev,
-          [analysis.questionId]: {
-            ...prev[analysis.questionId],
+          [analysis.id]: {
+            ...prev[analysis.id],
             status: 'failed',
             error: error instanceof Error ? error.message : 'Execution failed',
             endTime: new Date()
@@ -526,13 +526,13 @@ export default function StepFour({ applicationId, onNext, setCanProceed }: StepF
         <CardContent>
           <div className="space-y-4">
             {analyses.map((analysis, index) => {
-              const execution = executions[analysis.questionId] || { questionId: analysis.questionId, status: 'pending' };
+              const execution = executions[analysis.id] || { questionId: analysis.id, status: 'pending' };
               const connector = getConnectorForTool(analysis.toolSuggestion);
               const StatusIcon = getStatusIcon(execution.status);
               const ToolIcon = TOOL_ICONS[analysis.toolSuggestion as keyof typeof TOOL_ICONS] || Database;
               
               return (
-                <div key={`execution-${analysis.questionId}-${index}`} className="border border-slate-200 rounded-lg p-4">
+                <div key={`execution-${analysis.id}-${index}`} className="border border-slate-200 rounded-lg p-4">
                   <div className="flex items-start justify-between">
                     <div className="flex-1 space-y-3">
                       {/* Header */}
@@ -540,7 +540,7 @@ export default function StepFour({ applicationId, onNext, setCanProceed }: StepF
                         <div className="flex items-center space-x-2">
                           <ToolIcon className="h-4 w-4 text-slate-600" />
                           <span className="font-medium text-slate-900">
-                            {analysis.questionId || `Q${index + 1}`}
+                            {analysis.id || `Q${index + 1}`}
                           </span>
                         </div>
                         
@@ -567,7 +567,7 @@ export default function StepFour({ applicationId, onNext, setCanProceed }: StepF
                       {/* Agent Prompt */}
                       <div>
                         <p className="text-sm font-medium text-slate-700">Agent Prompt:</p>
-                        <p className="text-sm text-slate-600">{analysis.aiPrompt || analysis.prompt}</p>
+                        <p className="text-sm text-slate-600">{analysis.prompt}</p>
                       </div>
                       
                       {/* Progress for running execution */}
