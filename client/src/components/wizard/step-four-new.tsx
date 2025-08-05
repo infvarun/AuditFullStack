@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Play, CheckCircle, AlertTriangle, Clock, Database, FileText, Bug, TestTube, Wrench, Bot, RefreshCw } from "lucide-react";
+import { Play, CheckCircle, AlertTriangle, Clock, Database, FileText, Bug, TestTube, Wrench, Bot, RefreshCw, Save } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
@@ -118,6 +118,66 @@ export default function StepFour({ applicationId, onNext, setCanProceed }: StepF
     },
   });
 
+  // Save results mutation
+  const saveResultsMutation = useMutation({
+    mutationFn: async (executionResult: any) => {
+      const response = await apiRequest("POST", "/api/questions/save-answer", {
+        applicationId,
+        questionId: executionResult.questionId,
+        answer: executionResult.result.data,
+        findings: JSON.stringify(executionResult.result.findings || []),
+        riskLevel: executionResult.result.riskLevel,
+        complianceStatus: executionResult.result.complianceStatus,
+        dataPoints: executionResult.result.records,
+        executionDetails: JSON.stringify({
+          toolsUsed: [executionResult.toolType],
+          source: executionResult.result.source,
+          timestamp: executionResult.result.timestamp
+        })
+      });
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Results Saved",
+        description: "Data collection results have been saved to the database",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Save Failed",
+        description: "Failed to save results to database",
+        variant: "destructive",
+      });
+    }
+  });
+
+  const saveAllResults = async () => {
+    const completedExecutions = Object.values(executions).filter(e => e.status === 'completed');
+    
+    const savePromises = completedExecutions.map(execution => {
+      const analysis = analyses.find(a => a.questionId === execution.questionId);
+      return saveResultsMutation.mutateAsync({
+        ...execution,
+        toolType: analysis?.toolSuggestion
+      });
+    });
+
+    try {
+      await Promise.all(savePromises);
+      toast({
+        title: "All Results Saved",
+        description: `Successfully saved ${completedExecutions.length} results to the database`,
+      });
+    } catch (error) {
+      toast({
+        title: "Save Error",
+        description: "Some results failed to save. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
   // Initialize executions when analyses are loaded
   useEffect(() => {
     if (analyses.length > 0 && connectors.length >= 0) {
@@ -168,7 +228,8 @@ export default function StepFour({ applicationId, onNext, setCanProceed }: StepF
     const totalQuestions = analyses.length;
     let completedQuestions = 0;
 
-    for (const analysis of analyses) {
+    // Start all agents simultaneously to avoid progress bar conflicts
+    const executionPromises = analyses.map(async (analysis) => {
       const connector = getConnectorForTool(analysis.toolSuggestion);
       
       if (!connector) {
@@ -180,9 +241,7 @@ export default function StepFour({ applicationId, onNext, setCanProceed }: StepF
             error: 'No connector configured for this tool type'
           }
         }));
-        completedQuestions++;
-        setOverallProgress((completedQuestions / totalQuestions) * 100);
-        continue;
+        return;
       }
 
       // Update status to running
@@ -197,30 +256,30 @@ export default function StepFour({ applicationId, onNext, setCanProceed }: StepF
       }));
 
       try {
-        // Simulate progress updates
+        // Create individual progress tracker for this question
+        let currentProgress = 0;
         const progressInterval = setInterval(() => {
+          currentProgress = Math.min(currentProgress + 15, 85);
           setExecutions(prev => ({
             ...prev,
             [analysis.questionId]: {
               ...prev[analysis.questionId],
-              progress: Math.min((prev[analysis.questionId].progress || 0) + 20, 90)
+              progress: currentProgress
             }
           }));
-        }, 500);
+        }, 600);
 
-        // Execute the agent (mock implementation for now)
-        await new Promise(resolve => setTimeout(resolve, 2500)); // Simulate agent execution time
+        // Call actual mock agent executor API
+        const response = await executeAgentMutation.mutateAsync({
+          questionId: analysis.questionId,
+          prompt: analysis.aiPrompt || analysis.prompt || '',
+          toolType: analysis.toolSuggestion,
+          connectorId: connector.id
+        });
         
         clearInterval(progressInterval);
 
-        // Mock result based on tool type
-        const mockResult = {
-          data: `Data collected from ${TOOL_ID_MAPPING[analysis.toolSuggestion] || TOOL_NAMES[analysis.toolSuggestion as keyof typeof TOOL_NAMES]} for question: ${analysis.originalQuestion}`,
-          records: Math.floor(Math.random() * 100) + 1,
-          source: connector.connectorName,
-          timestamp: new Date().toISOString()
-        };
-
+        // Process the realistic mock result
         setExecutions(prev => ({
           ...prev,
           [analysis.questionId]: {
@@ -228,7 +287,15 @@ export default function StepFour({ applicationId, onNext, setCanProceed }: StepF
             status: 'completed',
             progress: 100,
             endTime: new Date(),
-            result: mockResult
+            result: {
+              data: response.analysis?.executiveSummary || `Comprehensive data analysis completed for: ${analysis.originalQuestion}`,
+              records: response.dataPoints || Math.floor(Math.random() * 50) + 10,
+              source: connector.connectorName,
+              timestamp: new Date().toISOString(),
+              findings: response.findings || [],
+              riskLevel: response.analysis?.riskLevel || 'Low',
+              complianceStatus: response.analysis?.complianceStatus || 'Compliant'
+            }
           }
         }));
 
@@ -243,15 +310,17 @@ export default function StepFour({ applicationId, onNext, setCanProceed }: StepF
           }
         }));
       }
+    });
 
-      completedQuestions++;
-      setOverallProgress((completedQuestions / totalQuestions) * 100);
-    }
-
+    // Wait for all executions to complete
+    await Promise.all(executionPromises);
+    
     setIsExecuting(false);
+    setOverallProgress(100);
+    
     toast({
       title: "Agent Execution Complete",
-      description: `Completed data collection for ${completedQuestions} questions`,
+      description: `Completed data collection for ${analyses.length} questions`,
     });
   };
 
@@ -372,6 +441,27 @@ export default function StepFour({ applicationId, onNext, setCanProceed }: StepF
                   </>
                 )}
               </Button>
+              
+              {Object.values(executions).some(e => e.status === 'completed') && (
+                <Button
+                  onClick={saveAllResults}
+                  disabled={saveResultsMutation.isPending}
+                  variant="outline"
+                  className="border-green-200 text-green-700 hover:bg-green-50"
+                >
+                  {saveResultsMutation.isPending ? (
+                    <>
+                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                      Saving All...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="h-4 w-4 mr-2" />
+                      Save All Results
+                    </>
+                  )}
+                </Button>
+              )}
             </div>
             
             <div className="flex items-center space-x-4 text-sm text-slate-600">
@@ -483,12 +573,65 @@ export default function StepFour({ applicationId, onNext, setCanProceed }: StepF
                       {/* Result for completed execution */}
                       {execution.status === 'completed' && execution.result && (
                         <div className="bg-green-50 border border-green-200 rounded p-3">
-                          <p className="text-sm font-medium text-green-800 mb-1">Data Collection Result:</p>
-                          <p className="text-sm text-green-700">{execution.result.data}</p>
-                          <div className="flex items-center space-x-4 mt-2 text-xs text-green-600">
-                            <span>Records: {execution.result.records}</span>
-                            <span>Source: {execution.result.source}</span>
+                          <div className="flex items-center justify-between mb-2">
+                            <p className="text-sm font-medium text-green-800">Data Collection Result:</p>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => saveResultsMutation.mutate({
+                                ...execution,
+                                toolType: analysis.toolSuggestion
+                              })}
+                              disabled={saveResultsMutation.isPending}
+                              className="h-7 px-3 text-xs"
+                            >
+                              {saveResultsMutation.isPending ? (
+                                <>
+                                  <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
+                                  Saving...
+                                </>
+                              ) : (
+                                <>
+                                  <Save className="h-3 w-3 mr-1" />
+                                  Save
+                                </>
+                              )}
+                            </Button>
                           </div>
+                          <p className="text-sm text-green-700 mb-2">{execution.result.data}</p>
+                          <div className="grid grid-cols-2 gap-4 text-xs text-green-600">
+                            <div>
+                              <span className="font-medium">Records:</span> {execution.result.records}
+                            </div>
+                            <div>
+                              <span className="font-medium">Source:</span> {execution.result.source}
+                            </div>
+                            <div>
+                              <span className="font-medium">Risk Level:</span> 
+                              <Badge variant={execution.result.riskLevel === 'High' ? 'destructive' : execution.result.riskLevel === 'Medium' ? 'secondary' : 'default'} className="ml-1 text-xs">
+                                {execution.result.riskLevel}
+                              </Badge>
+                            </div>
+                            <div>
+                              <span className="font-medium">Compliance:</span> 
+                              <Badge variant={execution.result.complianceStatus === 'Compliant' ? 'default' : 'destructive'} className="ml-1 text-xs">
+                                {execution.result.complianceStatus}
+                              </Badge>
+                            </div>
+                          </div>
+                          {execution.result.findings && execution.result.findings.length > 0 && (
+                            <div className="mt-3 pt-2 border-t border-green-200">
+                              <p className="text-xs font-medium text-green-800 mb-1">Key Findings:</p>
+                              <ul className="text-xs text-green-700 space-y-1">
+                                {execution.result.findings.slice(0, 2).map((finding: any, idx: number) => (
+                                  <li key={idx} className="flex items-start space-x-1">
+                                    <span className="text-green-500 mt-0.5">•</span>
+                                    <span>{finding.finding}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
                         </div>
                       )}
                       

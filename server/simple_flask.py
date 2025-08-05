@@ -1123,14 +1123,127 @@ def test_endpoint():
 
 # Alternative Agent Execution API (legacy endpoint)
 @app.route('/api/agents/execute', methods=['POST'])
-def execute_agent_legacy():
-    """Legacy agent execution endpoint - redirects to main endpoint"""
+def execute_agent():
+    """Execute AI agent for data collection with mock realistic responses"""
     try:
-        data = request.get_json()
-        # Redirect to main agent execution endpoint
-        return jsonify({'redirect': '/api/agent/execute', 'message': 'Please use /api/agent/execute endpoint'}), 302
+        import sys
+        import os
+        
+        # Add demo directory to Python path
+        demo_path = os.path.join(os.path.dirname(__file__), '..', 'demo')
+        if demo_path not in sys.path:
+            sys.path.append(demo_path)
+            
+        try:
+            from mock_agent_executor import MockAgentExecutor
+            
+            data = request.get_json()
+            application_id = data.get('applicationId')
+            question_id = data.get('questionId')
+            prompt = data.get('prompt', '')
+            tool_type = data.get('toolType', 'sql_server')
+            connector_id = data.get('connectorId')
+            
+            if not all([application_id, question_id, prompt]):
+                return jsonify({'error': 'Missing required fields: applicationId, questionId, prompt'}), 400
+            
+            # Get question details
+            conn = get_db_connection()
+            if not conn:
+                return jsonify({'error': 'Database connection failed'}), 500
+            
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor.execute("""
+                SELECT original_question, category, subcategory 
+                FROM question_analyses 
+                WHERE application_id = %s AND question_id = %s
+            """, (application_id, question_id))
+            
+            question_row = cursor.fetchone()
+            original_question = question_row['original_question'] if question_row else 'Unknown Question'
+            
+            # Create question analysis object for mock executor
+            question_analysis = {
+                'questionId': question_id,
+                'originalQuestion': original_question,
+                'toolSuggestion': tool_type,
+                'aiPrompt': prompt,
+                'category': question_row['category'] if question_row else 'General',
+                'subcategory': question_row['subcategory'] if question_row else 'Unknown'
+            }
+            
+            # Execute mock agent
+            executor = MockAgentExecutor()
+            execution_result = executor.execute_data_collection(question_analysis)
+            
+            # Store execution result in database
+            cursor.execute("""
+                INSERT INTO agent_executions (
+                    application_id, question_id, tool_type, connector_id, prompt, 
+                    result, status, execution_details, created_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())
+                RETURNING id
+            """, (
+                application_id,
+                question_id, 
+                tool_type,
+                connector_id,
+                prompt,
+                json.dumps(execution_result),
+                'completed',
+                json.dumps({
+                    'findings': execution_result.get('findings', []),
+                    'dataPoints': execution_result.get('dataPoints', 0),
+                    'duration': execution_result.get('duration', 0)
+                })
+            ))
+            
+            execution_id = cursor.fetchone()['id']
+            conn.commit()
+            
+            return jsonify({
+                'executionId': execution_id,
+                'status': 'completed',
+                'findings': execution_result.get('findings', []),
+                'analysis': execution_result.get('analysis', {}),
+                'dataPoints': execution_result.get('dataPoints', 0),
+                'collectedData': execution_result.get('collectedData', {}),
+                'duration': execution_result.get('duration', 0),
+                'timestamp': execution_result.get('endTime', datetime.now().isoformat())
+            }), 200
+            
+        except ImportError:
+            # Fallback if mock executor not available
+            return jsonify({
+                'executionId': f"mock_{question_id}_{int(time.time())}",
+                'status': 'completed',
+                'findings': [
+                    {
+                        'tool': tool_type,
+                        'finding': f'Mock analysis completed for: {original_question}',
+                        'severity': 'Info',
+                        'details': 'This is a simulated response for demonstration purposes.'
+                    }
+                ],
+                'analysis': {
+                    'executiveSummary': f'Comprehensive audit analysis completed for question: {original_question}. Mock data collection identified key areas for review.',
+                    'riskLevel': 'Low',
+                    'complianceStatus': 'Compliant',
+                    'totalDataPoints': 25
+                },
+                'dataPoints': 25,
+                'duration': 2.5,
+                'timestamp': datetime.now().isoformat()
+            }), 200
+            
     except Exception as e:
+        print(f"Error in execute_agent: {e}")
         return jsonify({'error': str(e)}), 500
+    finally:
+        if 'conn' in locals() and conn:
+            cursor.close()
+            conn.close()
 
 # Get agent execution results
 @app.route('/api/agents/executions/<int:application_id>', methods=['GET'])
@@ -1237,6 +1350,81 @@ def create_tool_connector():
         return jsonify({'error': str(e)}), 500
     finally:
         if conn:
+            cursor.close()
+            conn.close()
+
+@app.route('/api/questions/save-answer', methods=['POST'])
+def save_question_answer():
+    """Save AI agent execution results as question answers"""
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+        
+        application_id = data.get('applicationId')
+        question_id = data.get('questionId')
+        answer = data.get('answer', '')
+        findings = data.get('findings', '[]')
+        risk_level = data.get('riskLevel', 'Low')
+        compliance_status = data.get('complianceStatus', 'Compliant')
+        data_points = data.get('dataPoints', 0)
+        execution_details = data.get('executionDetails', '{}')
+        
+        if not all([application_id, question_id]):
+            return jsonify({'error': 'Missing required fields: applicationId, questionId'}), 400
+        
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'error': 'Database connection failed'}), 500
+        
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Check if answer already exists
+        cursor.execute("""
+            SELECT id FROM question_answers 
+            WHERE application_id = %s AND question_id = %s
+        """, (application_id, question_id))
+        
+        existing = cursor.fetchone()
+        
+        if existing:
+            # Update existing answer
+            cursor.execute("""
+                UPDATE question_answers 
+                SET answer = %s, findings = %s, risk_level = %s, compliance_status = %s,
+                    data_points = %s, execution_details = %s, updated_at = NOW()
+                WHERE application_id = %s AND question_id = %s
+                RETURNING id
+            """, (answer, findings, risk_level, compliance_status, data_points, 
+                  execution_details, application_id, question_id))
+        else:
+            # Insert new answer
+            cursor.execute("""
+                INSERT INTO question_answers (
+                    application_id, question_id, answer, findings, risk_level,
+                    compliance_status, data_points, execution_details, created_at, updated_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+                RETURNING id
+            """, (application_id, question_id, answer, findings, risk_level,
+                  compliance_status, data_points, execution_details))
+        
+        result = cursor.fetchone()
+        conn.commit()
+        
+        return jsonify({
+            'id': result['id'],
+            'message': 'Answer saved successfully',
+            'questionId': question_id,
+            'saved_at': datetime.now().isoformat()
+        }), 200
+        
+    except Exception as e:
+        if 'conn' in locals() and conn:
+            conn.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if 'conn' in locals() and conn:
             cursor.close()
             conn.close()
 
