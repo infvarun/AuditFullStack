@@ -228,7 +228,13 @@ export default function StepFive({ applicationId, setCanProceed }: StepFiveProps
                     {savedAnswers.reduce((sum: number, answer: any) => sum + (answer.dataPoints || 0), 0)} total records collected
                   </p>
                 </div>
-                <Button size="sm" variant="outline">
+                <Button 
+                  size="sm" 
+                  variant="outline"
+                  onClick={() => {
+                    window.open(`http://localhost:8000/api/applications/${applicationId}/download-excel`, '_blank');
+                  }}
+                >
                   <Download className="h-4 w-4 mr-2" />
                   Download
                 </Button>

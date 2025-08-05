@@ -7,8 +7,11 @@ Clean Flask backend with CORS enabled for React frontend
 import os
 import json
 import pandas as pd
-from flask import Flask, request, jsonify
+import tempfile
+from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
+from openpyxl import Workbook
+from openpyxl.utils.dataframe import dataframe_to_rows
 from werkzeug.utils import secure_filename
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -1462,6 +1465,99 @@ def get_question_answers(application_id):
         
         return jsonify(answers), 200
         
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if 'conn' in locals() and conn:
+            cursor.close()
+            conn.close()
+
+@app.route('/api/applications/<int:application_id>/download-excel', methods=['GET'])
+def download_excel_with_answers(application_id):
+    """Generate and download Excel file with questions and populated answers"""
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'error': 'Database connection failed'}), 500
+        
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Get application details
+        cursor.execute("SELECT name, audit_name FROM applications WHERE id = %s", (application_id,))
+        app_data = cursor.fetchone()
+        if not app_data:
+            return jsonify({'error': 'Application not found'}), 404
+        
+        # Get question analyses
+        cursor.execute("""
+            SELECT id, original_question, category, subcategory, tool_suggestion
+            FROM question_analyses 
+            WHERE application_id = %s
+            ORDER BY id
+        """, (application_id,))
+        
+        analyses = cursor.fetchall()
+        
+        # Get saved answers
+        cursor.execute("""
+            SELECT question_id, answer, risk_level, compliance_status, data_points
+            FROM question_answers 
+            WHERE application_id = %s
+        """, (application_id,))
+        
+        answers_dict = {row['question_id']: row for row in cursor.fetchall()}
+        
+        # Create DataFrame with original structure plus Answer column
+        data = []
+        for analysis in analyses:
+            answer_data = answers_dict.get(analysis['id'])
+            row = {
+                'ID': analysis['id'],
+                'Question': analysis['original_question'],
+                'Category': analysis['category'],
+                'Subcategory': analysis['subcategory'],
+                'Tool': analysis['tool_suggestion'],
+                'Answer': answer_data['answer'] if answer_data else 'No answer collected',
+                'Data Points': answer_data['data_points'] if answer_data else 0,
+                'Risk Level': answer_data['risk_level'] if answer_data else 'Not assessed',
+                'Compliance Status': answer_data['compliance_status'] if answer_data else 'Not assessed'
+            }
+            data.append(row)
+        
+        df = pd.DataFrame(data)
+        
+        # Create Excel file in memory
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp_file:
+            with pd.ExcelWriter(tmp_file.name, engine='openpyxl') as writer:
+                df.to_excel(writer, sheet_name='Audit Questions', index=False)
+                
+                # Get the workbook and worksheet to format
+                workbook = writer.book
+                worksheet = writer.sheets['Audit Questions']
+                
+                # Auto-adjust column widths
+                for column in worksheet.columns:
+                    max_length = 0
+                    column_letter = column[0].column_letter
+                    for cell in column:
+                        try:
+                            if len(str(cell.value)) > max_length:
+                                max_length = len(str(cell.value))
+                        except:
+                            pass
+                    adjusted_width = min(max_length + 2, 50)
+                    worksheet.column_dimensions[column_letter].width = adjusted_width
+            
+            # Generate filename
+            filename = f"{app_data['audit_name']}_Data_Collection_Results.xlsx"
+            
+            return send_file(
+                tmp_file.name,
+                as_attachment=True,
+                download_name=filename,
+                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+            
     except Exception as e:
         return jsonify({'error': str(e)}), 500
     finally:
