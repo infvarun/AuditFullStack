@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useEffect } from "react";
-import { TrendingUp, CheckCircle, Clock, XCircle, CircleHelp, FileText, Download, FolderOpen } from "lucide-react";
+import { useEffect, useState } from "react";
+import { TrendingUp, CheckCircle, Clock, XCircle, CircleHelp, FileText, Download, FolderOpen, Eye } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
@@ -16,6 +16,14 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "../ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "../ui/dialog";
+import { ScrollArea } from "../ui/scroll-area";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -27,6 +35,7 @@ interface StepFiveProps {
 export default function StepFive({ applicationId, setCanProceed }: StepFiveProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [selectedAnswer, setSelectedAnswer] = useState<any>(null);
 
   // Get saved answers from Step 4 execution
   const { data: savedAnswers = [], isLoading } = useQuery({
@@ -41,7 +50,7 @@ export default function StepFive({ applicationId, setCanProceed }: StepFiveProps
   });
 
   // Get application data
-  const { data: applicationData } = useQuery({
+  const { data: applicationData = {} } = useQuery({
     queryKey: [`/api/applications/${applicationId}`],
     enabled: !!applicationId,
   });
@@ -103,10 +112,10 @@ export default function StepFive({ applicationId, setCanProceed }: StepFiveProps
   }, [setCanProceed]);
 
   // Calculate statistics from saved answers
-  const completed = savedAnswers.length;
+  const completed = (savedAnswers as any[]).length;
   const partial = 0; // We don't have partial status in current implementation
-  const failed = analyses.length - completed;
-  const total = analyses.length;
+  const failed = (analyses as any[]).length - completed;
+  const total = (analyses as any[]).length;
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -217,7 +226,7 @@ export default function StepFive({ applicationId, setCanProceed }: StepFiveProps
           <div className="bg-white border border-slate-200 rounded-lg overflow-hidden mb-6">
             <div className="px-4 py-3 border-b border-slate-200 bg-slate-50">
               <h3 className="text-sm font-medium text-slate-900">
-                Audit Questions Status
+                Execution Results & Analysis
               </h3>
             </div>
             <div className="overflow-x-auto">
@@ -225,40 +234,157 @@ export default function StepFive({ applicationId, setCanProceed }: StepFiveProps
                 <TableHeader>
                   <TableRow>
                     <TableHead>ID</TableHead>
-                    <TableHead>Question</TableHead>
+                    <TableHead>Executive Summary</TableHead>
                     <TableHead>Category</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Document</TableHead>
+                    <TableHead>Risk Level</TableHead>
+                    <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {analyses.map((analysis: any) => {
-                    const savedAnswer = savedAnswers.find((answer: any) => answer.questionId === analysis.id);
+                  {(analyses as any[]).map((analysis: any) => {
+                    const savedAnswer = (savedAnswers as any[]).find((answer: any) => answer.questionId === analysis.id);
                     const hasAnswer = !!savedAnswer;
+                    const executiveSummary = hasAnswer ? 
+                      (savedAnswer.findings?.analysis?.executiveSummary || 
+                       savedAnswer.findings?.executiveSummary || 
+                       "No executive summary available") : 
+                      "No data collected";
+                    
+                    // Trim executive summary to 150 characters
+                    const trimmedSummary = executiveSummary.length > 150 ? 
+                      executiveSummary.substring(0, 150) + "..." : 
+                      executiveSummary;
+
                     return (
                       <TableRow key={analysis.id}>
                         <TableCell className="font-medium">
                           {analysis.id}
                         </TableCell>
-                        <TableCell className="max-w-md truncate">
-                          {analysis.originalQuestion}
-                        </TableCell>
-                        <TableCell>{analysis.category}</TableCell>
-                        <TableCell>{getStatusBadge(hasAnswer)}</TableCell>
-                        <TableCell>
+                        <TableCell className="max-w-md">
                           {hasAnswer ? (
-                            <div className="text-sm">
-                              <div className="text-slate-600">
-                                {savedAnswer.dataPoints} records
-                              </div>
-                              <div className="text-xs text-slate-500">
-                                Risk: {savedAnswer.riskLevel} | {savedAnswer.complianceStatus}
+                            <div className="space-y-1">
+                              <p className="text-sm text-slate-700 leading-relaxed">
+                                {trimmedSummary}
+                              </p>
+                              <div className="flex items-center space-x-2 text-xs text-slate-500">
+                                <span>{savedAnswer.dataPoints} records analyzed</span>
+                                <span>•</span>
+                                <span>{savedAnswer.complianceStatus}</span>
                               </div>
                             </div>
                           ) : (
                             <span className="text-slate-400 text-sm">
-                              No data collected
+                              No analysis available
                             </span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="text-xs">
+                            {analysis.category}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {hasAnswer ? (
+                            <Badge 
+                              variant={
+                                savedAnswer.riskLevel === 'Critical' ? 'destructive' :
+                                savedAnswer.riskLevel === 'High' ? 'destructive' :
+                                savedAnswer.riskLevel === 'Medium' ? 'secondary' : 'default'
+                              }
+                              className="text-xs"
+                            >
+                              {savedAnswer.riskLevel}
+                            </Badge>
+                          ) : (
+                            <span className="text-slate-400 text-xs">N/A</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {hasAnswer ? (
+                            <Dialog>
+                              <DialogTrigger asChild>
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm"
+                                  onClick={() => setSelectedAnswer(savedAnswer)}
+                                >
+                                  <Eye className="h-4 w-4 mr-1" />
+                                  View Details
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent className="max-w-4xl max-h-[80vh]">
+                                <DialogHeader>
+                                  <DialogTitle>Execution Details - {analysis.id}</DialogTitle>
+                                </DialogHeader>
+                                <ScrollArea className="max-h-[60vh] w-full">
+                                  <div className="space-y-6 p-1">
+                                    {/* Original Question */}
+                                    <div>
+                                      <h4 className="text-sm font-semibold text-slate-900 mb-2">Original Question</h4>
+                                      <p className="text-sm text-slate-700 bg-slate-50 p-3 rounded">
+                                        {analysis.originalQuestion}
+                                      </p>
+                                    </div>
+
+                                    {/* Executive Summary */}
+                                    <div>
+                                      <h4 className="text-sm font-semibold text-slate-900 mb-2">Executive Summary</h4>
+                                      <p className="text-sm text-slate-700 leading-relaxed">
+                                        {executiveSummary}
+                                      </p>
+                                    </div>
+
+                                    {/* Key Metrics */}
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                      <div className="bg-blue-50 p-3 rounded">
+                                        <div className="text-xs text-blue-600 font-medium">Data Points</div>
+                                        <div className="text-lg font-bold text-blue-900">{savedAnswer.dataPoints}</div>
+                                      </div>
+                                      <div className="bg-green-50 p-3 rounded">
+                                        <div className="text-xs text-green-600 font-medium">Confidence</div>
+                                        <div className="text-lg font-bold text-green-900">{savedAnswer.confidence}%</div>
+                                      </div>
+                                      <div className="bg-yellow-50 p-3 rounded">
+                                        <div className="text-xs text-yellow-600 font-medium">Risk Level</div>
+                                        <div className="text-lg font-bold text-yellow-900">{savedAnswer.riskLevel}</div>
+                                      </div>
+                                      <div className="bg-purple-50 p-3 rounded">
+                                        <div className="text-xs text-purple-600 font-medium">Compliance</div>
+                                        <div className="text-lg font-bold text-purple-900">{savedAnswer.complianceStatus}</div>
+                                      </div>
+                                    </div>
+
+                                    {/* Findings */}
+                                    {savedAnswer.findings?.findings && (
+                                      <div>
+                                        <h4 className="text-sm font-semibold text-slate-900 mb-2">Key Findings</h4>
+                                        <ul className="space-y-2">
+                                          {savedAnswer.findings.findings.map((finding: string, index: number) => (
+                                            <li key={index} className="text-sm text-slate-700 flex">
+                                              <span className="text-slate-400 mr-2">•</span>
+                                              <span>{finding}</span>
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                    )}
+
+                                    {/* Tool Used */}
+                                    <div>
+                                      <h4 className="text-sm font-semibold text-slate-900 mb-2">Tool Used</h4>
+                                      <div className="flex items-center space-x-2">
+                                        <Badge variant="outline">{savedAnswer.toolUsed}</Badge>
+                                        <span className="text-xs text-slate-500">
+                                          Execution Time: {savedAnswer.executionTime}ms
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </ScrollArea>
+                              </DialogContent>
+                            </Dialog>
+                          ) : (
+                            <span className="text-slate-400 text-sm">No actions</span>
                           )}
                         </TableCell>
                       </TableRow>
@@ -297,7 +423,7 @@ export default function StepFive({ applicationId, setCanProceed }: StepFiveProps
                     Data Collection Log
                   </h4>
                   <p className="text-xs text-slate-500">
-                    {savedAnswers.reduce((sum: number, answer: any) => sum + (answer.dataPoints || 0), 0)} total records collected
+                    {(savedAnswers as any[]).reduce((sum: number, answer: any) => sum + (answer.dataPoints || 0), 0)} total records collected
                   </p>
                 </div>
                 <Button 
@@ -322,22 +448,22 @@ export default function StepFive({ applicationId, setCanProceed }: StepFiveProps
                   Audit Status Management
                 </h3>
                 <p className="text-sm text-slate-600 mb-4">
-                  Current status: <strong>{applicationData?.status || 'In Progress'}</strong>
+                  Current status: <strong>{(applicationData as any)?.status || 'In Progress'}</strong>
                 </p>
                 <p className="text-sm text-slate-600 mb-4">
-                  {applicationData?.status === 'Completed' 
+                  {(applicationData as any)?.status === 'Completed' 
                     ? 'This audit has been marked as completed. You can reset it to "In Progress" if needed.'
                     : 'Mark this audit as completed to finalize all data collection and generate the final report.'
                   }
                 </p>
-                {applicationData?.status === 'Completed' && (
+                {(applicationData as any)?.status === 'Completed' && (
                   <Badge className="bg-green-100 text-green-800 mb-2">
                     Audit Completed
                   </Badge>
                 )}
               </div>
               <div className="ml-6 flex gap-3">
-                {applicationData?.status === 'Completed' ? (
+                {(applicationData as any)?.status === 'Completed' ? (
                   <>
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
