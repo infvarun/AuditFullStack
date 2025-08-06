@@ -366,7 +366,9 @@ export default function StepFive({ applicationId, setCanProceed }: StepFiveProps
                                       </div>
                                       <div className="bg-green-50 p-3 rounded">
                                         <div className="text-xs text-green-600 font-medium">Confidence</div>
-                                        <div className="text-lg font-bold text-green-900">{savedAnswer.confidence}%</div>
+                                        <div className="text-lg font-bold text-green-900">
+                                          {savedAnswer.confidence ? `${Math.round(savedAnswer.confidence * 100)}%` : 'N/A'}
+                                        </div>
                                       </div>
                                       <div className="bg-yellow-50 p-3 rounded">
                                         <div className="text-xs text-yellow-600 font-medium">Risk Level</div>
@@ -408,16 +410,7 @@ export default function StepFive({ applicationId, setCanProceed }: StepFiveProps
                                       <h4 className="text-sm font-semibold text-slate-900 mb-2">Tool Used</h4>
                                       <div className="flex items-center space-x-2">
                                         <Badge variant="outline">
-                                          {(() => {
-                                            try {
-                                              const execDetails = typeof savedAnswer.executionDetails === 'string' 
-                                                ? JSON.parse(savedAnswer.executionDetails) 
-                                                : savedAnswer.executionDetails;
-                                              return execDetails?.toolUsed || savedAnswer.toolUsed || 'Unknown';
-                                            } catch (e) {
-                                              return savedAnswer.toolUsed || 'Unknown';
-                                            }
-                                          })()}
+                                          {savedAnswer.toolUsed || savedAnswer.executionDetails?.toolUsed || 'SQL Server DB'}
                                         </Badge>
                                         <span className="text-xs text-slate-500">
                                           Data Points: {savedAnswer.dataPoints || 0}

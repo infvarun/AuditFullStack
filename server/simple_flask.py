@@ -1716,34 +1716,40 @@ def get_question_answers(application_id):
 
         cursor.execute(
             """
-            SELECT question_id, answer, findings, risk_level, compliance_status, 
-                   data_points, execution_details, created_at, updated_at
-            FROM question_answers 
-            WHERE application_id = %s
-            ORDER BY created_at DESC
+            SELECT ae.question_id, ae.result, ae.tool_used, ae.confidence, ae.risk_level, ae.compliance_status, 
+                   ae.data_collected, ae.execution_time, ae.findings, ae.created_at,
+                   qa.answer, qa.findings as qa_findings, qa.data_points as qa_data_points, qa.execution_details
+            FROM agent_executions ae
+            LEFT JOIN question_answers qa ON ae.application_id = qa.application_id AND ae.question_id = qa.question_id
+            WHERE ae.application_id = %s
+            ORDER BY ae.created_at DESC
         """, (application_id, ))
 
         answers = []
         for row in cursor.fetchall():
+            # Parse the result JSON to get detailed execution data
+            result_data = {}
+            if row['result']:
+                try:
+                    result_data = json.loads(row['result']) if isinstance(row['result'], str) else row['result']
+                except:
+                    result_data = {}
+            
             answers.append({
-                'questionId':
-                row['question_id'],
-                'answer':
-                row['answer'],
-                'findings':
-                row['findings'],
-                'riskLevel':
-                row['risk_level'],
-                'complianceStatus':
-                row['compliance_status'],
-                'dataPoints':
-                row['data_points'],
-                'executionDetails':
-                row['execution_details'],
-                'createdAt':
-                row['created_at'].isoformat() if row['created_at'] else None,
-                'updatedAt':
-                row['updated_at'].isoformat() if row['updated_at'] else None
+                'questionId': row['question_id'],
+                'answer': row['answer'] or result_data.get('analysis', {}).get('executiveSummary', ''),
+                'findings': row['qa_findings'] or row['findings'] or result_data.get('findings', []),
+                'riskLevel': row['risk_level'] or result_data.get('riskLevel', 'Low'),
+                'complianceStatus': row['compliance_status'] or result_data.get('complianceStatus', 'Compliant'),
+                'dataPoints': row['qa_data_points'] or row['data_collected'] or result_data.get('dataPoints', 0),
+                'executionDetails': row['execution_details'] or {
+                    'duration': row['execution_time'],
+                    'toolUsed': row['tool_used'] or result_data.get('toolsUsed', ['Unknown'])[0] if result_data.get('toolsUsed') else 'Unknown'
+                },
+                'confidence': row['confidence'] or result_data.get('analysis', {}).get('confidence', 0),
+                'toolUsed': row['tool_used'] or (result_data.get('toolsUsed', ['Unknown'])[0] if result_data.get('toolsUsed') else 'Unknown'),
+                'executionResult': result_data,  # Include full result for detailed access
+                'createdAt': row['created_at'].isoformat() if row['created_at'] else None
             })
 
         return jsonify(answers), 200
