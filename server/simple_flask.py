@@ -1767,8 +1767,9 @@ def get_question_answers(application_id):
             
             # Fill from agent execution data first
             if agent_data:
-                # Extract confidence from analysis.confidence in JSON result
-                confidence = result_data.get('analysis', {}).get('confidence', 0)
+                # Extract confidence from analysis.confidence in JSON result and round to 2 decimal places
+                raw_confidence = result_data.get('analysis', {}).get('confidence', 0)
+                confidence = round(raw_confidence, 2) if raw_confidence else 0
                 # Extract tool from toolsUsed array in JSON result
                 tools_used = result_data.get('toolsUsed', [])
                 tool_used = tools_used[0] if tools_used else agent_data.get('tool_used', 'Unknown')
