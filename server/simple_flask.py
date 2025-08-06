@@ -2924,8 +2924,8 @@ def veritas_gpt_chat():
         # Import the enhanced Veritas GPT agent
         from veritas_gpt_enhanced import create_veritas_agent
         
-        # Create agent with OpenAI API key
-        agent = create_veritas_agent(openai_api_key=OPENAI_API_KEY)
+        # Create agent with existing LangChain LLM
+        agent = create_veritas_agent(llm=llm)
         
         # Get conversation history if conversation_id provided
         conversation_history = []

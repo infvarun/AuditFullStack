@@ -21,14 +21,19 @@ from langchain_core.prompts import ChatPromptTemplate, SystemMessagePromptTempla
 class VeritasGPTAgent:
     """Enhanced Veritas GPT Agent with folder-based tool integration"""
     
-    def __init__(self, tools_path: str = "server/tools", openai_api_key: str = None):
-        self.tools_path = tools_path
-        self.llm = ChatOpenAI(
-            api_key=openai_api_key,
-            model="gpt-4o",  # Using latest GPT-4o model
-            temperature=0.1,
-            max_tokens=4000
-        )
+    def __init__(self, tools_path: str = "server/tools", llm=None):
+        # Ensure absolute path for tools directory
+        if not os.path.isabs(tools_path):
+            # Get the directory where this script is located and construct path from there
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            self.tools_path = os.path.join(current_dir, "tools")
+        else:
+            self.tools_path = tools_path
+            
+        # Use existing LangChain LLM from Flask app instead of creating new one
+        if llm is None:
+            raise ValueError("LLM instance is required. Pass the configured LangChain LLM from Flask app.")
+        self.llm = llm
         
         # Define available tools and their file mappings
         self.tool_mappings = {
@@ -194,6 +199,18 @@ class VeritasGPTAgent:
     def analyze_tool_data_for_query(self, tool_data: Dict[str, Any], query: str) -> Dict[str, Any]:
         """Use LLM to analyze if tool data is relevant to the query"""
         try:
+            # For SQL Server and Oracle databases, always consider them relevant for access control queries
+            tool_name = tool_data.get("tool", "")
+            if any(keyword in query.lower() for keyword in ["access", "user", "role", "permission", "sql", "database"]):
+                if tool_name in ["sql_server", "oracle_db"]:
+                    return {
+                        "relevant": True,
+                        "score": 9,
+                        "relevant_files": [f["name"] for f in tool_data.get("files", [])],
+                        "summary": f"Tool contains database access control data relevant to query: {tool_data.get('description', '')}"
+                    }
+            
+            # For other queries, use LLM analysis
             system_prompt = """You are an expert data analyst. Analyze the provided tool data to determine its relevance to the user's query.
 
 Return a JSON response with:
@@ -258,14 +275,14 @@ Analyze relevance:"""
             context_sections.append(f"**{tool_key.upper()} Data:**")
             context_sections.append(result["summary"])
             
-            # Add specific file data for context
+            # Add file metadata for context (avoiding complex data structures)
             for file_info in result["data"]["files"][:2]:  # Max 2 files per tool
-                if "sample_data" in file_info:
-                    context_sections.append(f"Sample from {file_info['name']}:")
-                    context_sections.append(str(file_info["sample_data"][:3]))
+                if "columns" in file_info:
+                    context_sections.append(f"File: {file_info['name']} ({file_info.get('rows', 0)} rows)")
+                    context_sections.append(f"Columns: {', '.join(file_info['columns'])}")
                 elif "preview" in file_info:
-                    context_sections.append(f"Content from {file_info['name']}:")
-                    context_sections.append(file_info["preview"][:300])
+                    context_sections.append(f"Document: {file_info['name']}")
+                    context_sections.append(f"Preview: {file_info['preview'][:200]}")
         
         # Create comprehensive system prompt
         system_prompt = f"""You are Veritas GPT, an expert audit analyst with access to comprehensive audit data for CI {ci_id}.
@@ -312,6 +329,6 @@ CONVERSATION HISTORY:
                 "error": str(e)
             }
 
-def create_veritas_agent(openai_api_key: str) -> VeritasGPTAgent:
-    """Factory function to create a Veritas GPT agent"""
-    return VeritasGPTAgent(openai_api_key=openai_api_key)
+def create_veritas_agent(llm) -> VeritasGPTAgent:
+    """Factory function to create a Veritas GPT agent with existing LangChain LLM"""
+    return VeritasGPTAgent(llm=llm)
