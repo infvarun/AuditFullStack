@@ -21,7 +21,7 @@ import { Badge } from "../components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Separator } from "../components/ui/separator";
 import { ScrollArea } from "../components/ui/scroll-area";
-import type { Application, ContextDocument } from "@shared/schema";
+import type { Application } from "@shared/schema";
 import { apiRequest, queryClient } from "../lib/queryClient";
 import { useToast } from "../hooks/use-toast";
 import ReactMarkdown from 'react-markdown';
@@ -59,11 +59,7 @@ export default function VeritasGPT() {
   // Get selected audit info
   const selectedAudit = applications.find(app => app.id.toString() === selectedAuditId);
   
-  // Fetch context documents for selected audit's CI
-  const { data: contextDocuments = [] } = useQuery<ContextDocument[]>({
-    queryKey: ["/api/context-documents", selectedAudit?.ciId],
-    enabled: !!selectedAudit?.ciId,
-  });
+  // Note: Using folder-based tool system, no need to fetch context documents
 
   // Fetch data collection forms for selected audit
   const { data: dataRequests = [] } = useQuery<any[]>({
@@ -98,43 +94,50 @@ export default function VeritasGPT() {
       setMessage("");
       setIsLoading(true);
       
-      // Initialize thinking steps
+      // Initialize thinking steps for folder-based tool system
       setThinkingSteps([
-        { step: "Reading Support Plan", status: 'loading' },
-        { step: "Analyzing Design Diagram", status: 'pending' },
-        { step: "Processing Additional Supplements", status: 'pending' },
-        { step: "Searching audit context", status: 'pending' },
+        { step: "Scanning available tools for CI", status: 'loading' },
+        { step: "Analyzing tool data relevance", status: 'pending' },
+        { step: "Reading relevant data files", status: 'pending' },
+        { step: "Processing audit context", status: 'pending' },
         { step: "Generating response", status: 'pending' },
       ]);
     },
     onSuccess: (data) => {
       setConversationId(data.conversationId);
       
-      // Simulate thinking process
+      // Use actual thinking steps from the enhanced agent
+      const actualSteps = data.thinkingSteps || [
+        "Scanning available tools for CI",
+        "Analyzing tool data relevance", 
+        "Reading relevant data files",
+        "Processing audit context",
+        "Generating response"
+      ];
+      
+      // Simulate thinking process with actual steps
       let currentStep = 0;
       const interval = setInterval(() => {
         setThinkingSteps(prev => {
-          const newSteps = [...prev];
-          if (currentStep > 0) {
-            newSteps[currentStep - 1].status = 'completed';
-          }
-          if (currentStep < newSteps.length) {
-            newSteps[currentStep].status = 'loading';
-          }
+          const newSteps = actualSteps.map((step, index) => ({
+            step,
+            status: index < currentStep ? 'completed' : 
+                   index === currentStep ? 'loading' : 'pending'
+          }));
           return newSteps;
         });
         
         currentStep++;
-        if (currentStep > thinkingSteps.length) {
+        if (currentStep > actualSteps.length) {
           clearInterval(interval);
           
-          // Add assistant response
+          // Add assistant response with enhanced metadata
           const assistantMessage: Message = {
             id: Date.now().toString() + '_assistant',
             role: 'assistant',
             content: data.response,
             timestamp: new Date(),
-            thinking: data.contextUsed || [],
+            thinking: data.toolsUsed ? [`Tools: ${data.toolsUsed.join(', ')}`, `Context: ${data.contextSummary || 'Folder-based data analysis'}`] : [],
           };
           
           setMessages(prev => [...prev, assistantMessage]);
@@ -221,11 +224,11 @@ export default function VeritasGPT() {
             
             <Button
               variant="outline"
-              onClick={() => setLocation("/settings")}
+              onClick={() => setLocation("/wizard")}
               className="text-slate-600 hover:text-slate-900"
             >
               <Settings className="h-4 w-4 mr-2" />
-              Manage Context
+              Audit Wizard
             </Button>
           </div>
         </div>
@@ -279,33 +282,50 @@ export default function VeritasGPT() {
                     <p className="text-xs text-blue-600">Status: {selectedAudit.status}</p>
                   </div>
                   
-                  {/* Context Documents */}
+                  {/* Available Tools */}
                   <div>
-                    <h4 className="text-sm font-medium mb-2">Context Documents</h4>
-                    {contextDocuments.length > 0 ? (
-                      <div className="space-y-2">
-                        {contextDocuments.map((doc) => (
-                          <div key={doc.id} className="flex items-center space-x-2 p-2 bg-slate-50 rounded">
-                            {getDocumentTypeIcon(doc.documentType)}
-                            <div className="flex-1 min-w-0">
-                              <p className="text-xs font-medium truncate">{getDocumentTypeLabel(doc.documentType)}</p>
-                              <p className="text-xs text-slate-500 truncate">{doc.fileName}</p>
-                            </div>
-                          </div>
-                        ))}
+                    <h4 className="text-sm font-medium mb-2">Available Tools</h4>
+                    <div className="space-y-2">
+                      {/* Tool indicators - these are automatically detected by the enhanced agent */}
+                      <div className="flex items-center space-x-2 p-2 bg-blue-50 rounded">
+                        <Settings className="h-4 w-4 text-blue-500" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium text-blue-900">SQL Server</p>
+                          <p className="text-xs text-blue-700">User roles, studies, access logs</p>
+                        </div>
                       </div>
-                    ) : (
-                      <div className="text-center py-3">
-                        <p className="text-xs text-slate-500 mb-2">No context documents</p>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setLocation("/settings")}
-                        >
-                          Upload Context
-                        </Button>
+                      <div className="flex items-center space-x-2 p-2 bg-green-50 rounded">
+                        <Settings className="h-4 w-4 text-green-500" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium text-green-900">Oracle DB</p>
+                          <p className="text-xs text-green-700">User roles, study data</p>
+                        </div>
                       </div>
-                    )}
+                      <div className="flex items-center space-x-2 p-2 bg-purple-50 rounded">
+                        <FileText className="h-4 w-4 text-purple-500" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium text-purple-900">Gnosis</p>
+                          <p className="text-xs text-purple-700">Support plans, design docs</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-2 p-2 bg-orange-50 rounded">
+                        <Settings className="h-4 w-4 text-orange-500" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium text-orange-900">Jira & QTest</p>
+                          <p className="text-xs text-orange-700">Tickets, test executions</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-2 p-2 bg-cyan-50 rounded">
+                        <Settings className="h-4 w-4 text-cyan-500" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium text-cyan-900">ServiceNow</p>
+                          <p className="text-xs text-cyan-700">Change requests, ITSM</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="mt-2 p-2 bg-slate-50 rounded text-center">
+                      <p className="text-xs text-slate-600">🤖 Agent automatically selects relevant tools</p>
+                    </div>
                   </div>
 
                   {/* Data Collection Forms */}
@@ -363,7 +383,7 @@ export default function VeritasGPT() {
                           Veritas GPT Ready
                         </h3>
                         <p className="text-slate-500">
-                          Ask questions about your audit data and context documents
+                          Ask questions about your audit data and CI tools
                         </p>
                       </div>
                     ) : (
@@ -459,7 +479,7 @@ export default function VeritasGPT() {
                         value={message}
                         onChange={(e) => setMessage(e.target.value)}
                         onKeyPress={handleKeyPress}
-                        placeholder="Ask about your audit context..."
+                        placeholder="Ask about your audit data, tools, and findings..."
                         disabled={isLoading}
                         rows={1}
                         className="flex-1 resize-none bg-transparent border-none outline-none text-sm placeholder:text-slate-500 disabled:cursor-not-allowed disabled:opacity-50 min-h-[40px] max-h-[120px] py-2 px-2"

@@ -2908,278 +2908,108 @@ def delete_context_document(document_id):
 
 @app.route('/api/veritas-gpt/chat', methods=['POST'])
 def veritas_gpt_chat():
-    """Handle Veritas GPT chat requests with context-aware responses - gracefully handles missing documents"""
-    conn = None
-    cursor = None
-
+    """Enhanced Veritas GPT chat with folder-based tool integration"""
     try:
         data = request.get_json()
         message = data.get('message')
         ci_id = data.get('ciId')
         audit_id = data.get('auditId')
         audit_name = data.get('auditName', 'Unknown Audit')
+        conversation_id = data.get('conversationId')
 
         if not message or not ci_id or not audit_id:
             return jsonify(
                 {'error': 'Message, CI ID, and Audit ID are required'}), 400
 
-        # Initialize context information
-        context_docs = []
-        data_requests = []
-        execution_results = []
-        context_info = []
-        data_collection_info = []
-        execution_info = []
-
-        # Try to get database connection and fetch context, but don't fail if unavailable
+        # Import the enhanced Veritas GPT agent
+        from veritas_gpt_enhanced import create_veritas_agent
+        
+        # Create agent with OpenAI API key
+        agent = create_veritas_agent(openai_api_key=OPENAI_API_KEY)
+        
+        # Get conversation history if conversation_id provided
+        conversation_history = []
+        if conversation_id:
+            try:
+                conn = get_db_connection()
+                if conn:
+                    cursor = conn.cursor(cursor_factory=RealDictCursor)
+                    cursor.execute(
+                        """
+                        SELECT message, response, timestamp
+                        FROM veritas_conversations 
+                        WHERE conversation_id = %s
+                        ORDER BY timestamp ASC
+                        LIMIT 10
+                    """, (conversation_id,))
+                    
+                    history_rows = cursor.fetchall() or []
+                    for row in history_rows:
+                        conversation_history.extend([
+                            {"role": "user", "content": row['message']},
+                            {"role": "assistant", "content": row['response']}
+                        ])
+                    cursor.close()
+                    conn.close()
+            except Exception as e:
+                print(f"Error fetching conversation history: {e}")
+        
+        # Generate response using enhanced agent
+        agent_response = agent.generate_context_aware_response(
+            ci_id=ci_id,
+            user_message=message,
+            conversation_history=conversation_history
+        )
+        
+        # Generate conversation ID if not provided
+        if not conversation_id:
+            conversation_id = f"conv_{ci_id}_{int(datetime.now().timestamp())}"
+        
+        # Store conversation in database
         try:
             conn = get_db_connection()
             if conn:
-                cursor = conn.cursor(cursor_factory=RealDictCursor)
-
-                # Try to get context documents for this CI
-                try:
-                    cursor.execute(
-                        """
-                        SELECT document_type, file_name, file_path, file_size
-                        FROM context_documents 
-                        WHERE ci_id = %s
-                        ORDER BY uploaded_at DESC
-                    """, (ci_id, ))
-                    context_docs = cursor.fetchall() or []
-                except Exception as db_error:
-                    print(f"Context documents query failed: {db_error}")
-                    context_docs = []
-
-                # Try to get data collection forms for this audit
-                try:
-                    cursor.execute(
-                        """
-                        SELECT file_name, file_type, total_questions, categories, subcategories
-                        FROM data_requests 
-                        WHERE application_id = %s
-                        ORDER BY uploaded_at DESC
-                    """, (audit_id, ))
-                    data_requests = cursor.fetchall() or []
-                except Exception as db_error:
-                    print(f"Data requests query failed: {db_error}")
-                    data_requests = []
-
-                # Try to get Step 4 execution results for this audit
-                try:
-                    cursor.execute(
-                        """
-                        SELECT question_id, result, status, execution_details
-                        FROM agent_executions 
-                        WHERE application_id = %s
-                        ORDER BY question_id
-                    """, (audit_id, ))
-                    execution_results = cursor.fetchall() or []
-                except Exception as db_error:
-                    print(f"Agent executions query failed: {db_error}")
-                    execution_results = []
-
-        except Exception as conn_error:
-            print(f"Database connection failed: {conn_error}")
-            # Continue without database context
-
-        # Build context information (gracefully handle missing data)
-        try:
-            for doc in context_docs:
-                doc_type_label = {
-                    'support_plan': 'Support Plan',
-                    'design_diagram': 'Design Diagram',
-                    'additional_supplements': 'Additional Supplements'
-                }.get(doc.get('document_type', ''), 'Document')
-
-                file_name = doc.get('file_name', 'Unknown File')
-                file_size = doc.get('file_size', 0)
-                context_info.append(
-                    f"- {doc_type_label}: {file_name} ({file_size} bytes)")
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    INSERT INTO veritas_conversations 
+                    (conversation_id, ci_id, audit_id, audit_name, message, response, tools_used, timestamp)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    conversation_id,
+                    ci_id,
+                    audit_id,
+                    audit_name,
+                    message,
+                    agent_response.get('response', ''),
+                    json.dumps(agent_response.get('tools_used', [])),
+                    datetime.now()
+                ))
+                conn.commit()
+                cursor.close()
+                conn.close()
         except Exception as e:
-            print(f"Error building context info: {e}")
-
-        # Build data collection forms information (gracefully handle missing data)
-        try:
-            for req in data_requests:
-                file_type = req.get('file_type', 'unknown')
-                file_type_label = "Primary Questions" if file_type == 'primary' else "Follow-up Questions"
-                categories = req.get('categories', []) or []
-                category_list = ", ".join(
-                    categories) if categories else "Various"
-                total_questions = req.get('total_questions', 0)
-                file_name = req.get('file_name', 'Unknown File')
-                data_collection_info.append(
-                    f"- {file_type_label}: {file_name} ({total_questions} questions in {category_list})"
-                )
-        except Exception as e:
-            print(f"Error building data collection info: {e}")
-
-        # Build execution results information (Step 4 completed results)
-        try:
-            completed_count = 0
-            total_count = len(execution_results)
-            sample_findings = []
-
-            for result in execution_results:
-                if result.get('status') == 'completed':
-                    completed_count += 1
-
-                    # Extract findings from JSON result data
-                    if len(sample_findings) < 3:
-                        try:
-                            result_data = json.loads(result.get(
-                                'result', '{}')) if isinstance(
-                                    result.get('result'), str) else result.get(
-                                        'result', {})
-                            question_id = result.get('question_id', 'Unknown')
-
-                            # Get findings from the result JSON
-                            findings_list = result_data.get('findings', [])
-                            if findings_list:
-                                finding_text = findings_list[0].get(
-                                    'finding', 'No findings available'
-                                )[:80] + '...' if len(findings_list[0].get(
-                                    'finding',
-                                    '')) > 80 else findings_list[0].get(
-                                        'finding', '')
-                                sample_findings.append(
-                                    f"  • {question_id}: {finding_text}")
-                            else:
-                                # Try executive summary
-                                exec_summary = result_data.get(
-                                    'analysis',
-                                    {}).get('executiveSummary', '')
-                                if exec_summary:
-                                    summary_text = exec_summary[:80] + '...' if len(
-                                        exec_summary) > 80 else exec_summary
-                                    sample_findings.append(
-                                        f"  • {question_id}: {summary_text}")
-                        except (json.JSONDecodeError,
-                                AttributeError) as parse_error:
-                            print(f"Error parsing result JSON: {parse_error}")
-
-            if total_count > 0:
-                execution_info.append(
-                    f"- Execution Status: {completed_count}/{total_count} questions completed"
-                )
-                if sample_findings:
-                    execution_info.append("- Sample Findings:")
-                    execution_info.extend(sample_findings)
-        except Exception as e:
-            print(f"Error building execution info: {e}")
-
-        # Create context-aware system prompt with graceful degradation
-        context_section = chr(10).join(
-            context_info
-        ) if context_info else "No context documents are currently available for this CI."
-        data_collection_section = chr(10).join(
-            data_collection_info
-        ) if data_collection_info else "No data collection forms are currently available for this audit."
-        execution_section = chr(10).join(
-            execution_info
-        ) if execution_info else "No execution results are currently available for this audit."
-
-        system_prompt = f"""You are Veritas GPT, an AI assistant specialized in audit data collection and analysis for audit "{audit_name}" (CI {ci_id}).
-
-CONTEXT DOCUMENTS AVAILABLE FOR THIS CI:
-{context_section}
-
-DATA COLLECTION FORMS FOR THIS AUDIT (Step 2):
-{data_collection_section}
-
-EXECUTION RESULTS FOR THIS AUDIT (Step 4):
-{execution_section}
-
-Your role is to:
-1. Provide accurate, helpful responses about audit processes and data collection
-2. Reference available context documents, data collection forms, AND execution results when relevant
-3. Help users understand audit questions, requirements, workflows, and completed findings
-4. Analyze completed execution results to provide insights and recommendations
-5. Maintain a professional, helpful tone focused on audit excellence
-
-You have access to:
-- Context documents uploaded for the CI system
-- Data collection forms with audit questions and categories (Step 2)
-- Completed execution results with findings and answers (Step 4)
-- General audit best practices and methodologies
-
-When answering questions, leverage all available context including:
-- Specific audit questions from data collection forms
-- Completed findings and results from execution
-- Context about the CI system being audited
-- Industry-standard audit approaches and recommendations
-
-Please provide detailed, actionable responses while referencing the specific context available for this audit."""
-
-        # Use Langchain to generate response (ensure we're using Langchain not direct OpenAI)
-        try:
-            messages = [
-                SystemMessage(content=system_prompt),
-                HumanMessage(content=message)
-            ]
-
-            # Ensure we're using the Langchain llm object, not direct OpenAI
-            response = llm.invoke(messages)
-            response_content = response.content
-
-        except Exception as llm_error:
-            print(f"LLM invocation error: {llm_error}")
-            # Provide graceful fallback response
-            response_content = f"""I apologize, but I'm currently experiencing technical difficulties with the AI response system. 
-
-However, I can still help you with your audit question about "{audit_name}" (CI {ci_id}).
-
-Based on your query: "{message}"
-
-Here are some general audit guidance points:
-- Ensure all audit documentation is properly organized and accessible
-- Follow systematic data collection procedures for consistency
-- Validate data sources and maintain audit trails
-- Document findings clearly with supporting evidence
-
-Please try your question again, or contact your system administrator if the issue persists."""
-
+            print(f"Error storing conversation: {e}")
+            # Continue without storing - this shouldn't fail the response
+        
         return jsonify({
-            'response': response_content,
-            'contextDocuments': len(context_docs),
-            'dataCollectionForms': len(data_requests),
-            'executionResults': len(execution_results),
+            'response': agent_response.get('response', ''),
+            'conversationId': conversation_id,
+            'toolsUsed': agent_response.get('tools_used', []),
+            'thinkingSteps': agent_response.get('thinking_steps', []),
+            'contextSummary': agent_response.get('context_summary', ''),
+            'availableTools': agent_response.get('available_tools', []),
             'auditName': audit_name,
-            'timestamp': datetime.now().isoformat(),
-            'status': 'success'
+            'ciId': ci_id
         }), 200
 
     except Exception as e:
-        print(f"Veritas GPT error: {str(e)}")
-        # Provide user-friendly error with graceful degradation
-        error_response = f"""I encountered an issue while processing your request, but I can still provide general audit guidance.
-
-For audit "{audit_name}" (CI {ci_id}), regarding your question: "{message or 'your audit inquiry'}"
-
-General recommendations:
-- Review available audit documentation and context materials
-- Follow established audit procedures and protocols  
-- Ensure proper data collection and validation processes
-- Document all findings with appropriate detail
-
-Please try again or contact support if issues persist."""
-
+        print(f"Veritas GPT chat error: {e}")
         return jsonify({
-            'response': error_response,
-            'contextDocuments': 0,
-            'dataCollectionForms': 0,
-            'executionResults': 0,
-            'auditName': audit_name,
-            'timestamp': datetime.now().isoformat(),
-            'status': 'error_handled'
-        }), 200
-
-    finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
+            'error': f'Error processing request: {str(e)}',
+            'response': 'I encountered an error while processing your request. Please try again.',
+            'conversationId': conversation_id or f"conv_{ci_id}_{int(datetime.now().timestamp())}"
+        }), 500
 
 
 if __name__ == '__main__':
