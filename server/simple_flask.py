@@ -1824,15 +1824,34 @@ def download_execution_results_excel(application_id):
 
         # Get data from agent_executions (Step 4 execution results)
         cursor.execute("""
-            SELECT ae.question_id, ae.result, ae.created_at, dr.question, dr.process, dr.sub_process
+            SELECT ae.question_id, ae.result, ae.created_at
             FROM agent_executions ae
-            LEFT JOIN data_requests dr ON CAST(ae.question_id AS INTEGER) = dr.question_number 
-                AND dr.application_id = ae.application_id
             WHERE ae.application_id = %s
-            ORDER BY CAST(ae.question_id AS INTEGER)
+            ORDER BY CAST(SUBSTRING(ae.question_id FROM '[0-9]+') AS INTEGER)
         """, (application_id,))
         
         agent_results = cursor.fetchall()
+        
+        # Get the questions from data_requests
+        cursor.execute("""
+            SELECT questions FROM data_requests WHERE application_id = %s LIMIT 1
+        """, (application_id,))
+        
+        questions_row = cursor.fetchone()
+        if questions_row and questions_row['questions']:
+            # Handle both string and already-parsed list cases
+            if isinstance(questions_row['questions'], str):
+                questions_data = json.loads(questions_row['questions'])
+            else:
+                questions_data = questions_row['questions']
+        else:
+            questions_data = []
+        
+        # Create a mapping of question IDs to question text
+        question_map = {}
+        for q in questions_data:
+            question_map[q.get('questionNumber', q.get('id', ''))] = q.get('question', '')
+        
         answers_data = []
         
         for agent_data in agent_results:
@@ -1841,10 +1860,14 @@ def download_execution_results_excel(application_id):
                 confidence = result_data.get('analysis', {}).get('confidence', 0)
                 tool_used = result_data.get('toolsUsed', [{}])[0] if result_data.get('toolsUsed') else 'Unknown'
                 
+                # Get the question text from the mapping
+                question_id = agent_data['question_id']
+                original_question = question_map.get(question_id, f"Question {question_id}")
+                
                 answers_data.append({
-                    'questionId': agent_data['question_id'],
-                    'originalQuestion': agent_data['question'] or f"Question {agent_data['question_id']}",
-                    'answer': result_data.get('executiveSummary', 'No summary available'),
+                    'questionId': question_id,
+                    'originalQuestion': original_question,
+                    'answer': result_data.get('analysis', {}).get('executiveSummary', 'No summary available'),
                     'riskLevel': result_data.get('riskLevel', 'Not assessed'),
                     'complianceStatus': result_data.get('complianceStatus', 'Not assessed'),
                     'dataPoints': result_data.get('dataPoints', 0),
@@ -1854,9 +1877,12 @@ def download_execution_results_excel(application_id):
                 })
             except (json.JSONDecodeError, KeyError) as e:
                 # Handle malformed JSON gracefully
+                question_id = agent_data['question_id']
+                original_question = question_map.get(question_id, f"Question {question_id}")
+                
                 answers_data.append({
-                    'questionId': agent_data['question_id'],
-                    'originalQuestion': agent_data['question'] or f"Question {agent_data['question_id']}",
+                    'questionId': question_id,
+                    'originalQuestion': original_question,
                     'answer': 'Data parsing error',
                     'riskLevel': 'Not assessed',
                     'complianceStatus': 'Not assessed',
