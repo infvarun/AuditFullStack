@@ -2921,11 +2921,17 @@ def veritas_gpt_chat():
             return jsonify(
                 {'error': 'Message, CI ID, and Audit ID are required'}), 400
 
-        # Import the enhanced Veritas GPT agent
-        from veritas_gpt_enhanced import create_veritas_agent
-        
-        # Create agent with existing LangChain LLM
-        agent = create_veritas_agent(llm=llm)
+        # Import the enhanced Veritas GPT agent with LangGraph
+        try:
+            from veritas_gpt_langgraph import create_veritas_langgraph_agent
+            # Create LangGraph agent with existing LangChain LLM
+            agent = create_veritas_langgraph_agent(llm=llm)
+            print("Using LangGraph-enhanced Veritas GPT agent")
+        except ImportError as e:
+            print(f"LangGraph import failed, falling back to basic agent: {e}")
+            from veritas_gpt_enhanced import create_veritas_agent
+            # Fallback to basic agent
+            agent = create_veritas_agent(llm=llm)
         
         # Get conversation history if conversation_id provided
         conversation_history = []
@@ -2958,7 +2964,8 @@ def veritas_gpt_chat():
         agent_response = agent.generate_context_aware_response(
             ci_id=ci_id,
             user_message=message,
-            conversation_history=conversation_history
+            conversation_history=conversation_history,
+            conversation_id=conversation_id
         )
         
         # Generate conversation ID if not provided

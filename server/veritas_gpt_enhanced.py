@@ -300,7 +300,7 @@ Analyze relevance:"""
             print(f"Error analyzing tool data relevance: {e}")
             return {"relevant": False, "score": 0, "relevant_files": [], "summary": "Analysis failed"}
     
-    def generate_context_aware_response(self, ci_id: str, user_message: str, conversation_history: List[Dict] = None) -> Dict[str, Any]:
+    def generate_context_aware_response(self, ci_id: str, user_message: str, conversation_history: List[Dict] = None, conversation_id: str = None) -> Dict[str, Any]:
         """Generate a context-aware response using available tool data"""
         
         # Get available tools for this CI
