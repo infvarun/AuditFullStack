@@ -244,11 +244,23 @@ export default function StepFive({ applicationId, setCanProceed }: StepFiveProps
                   {(analyses as any[]).map((analysis: any) => {
                     const savedAnswer = (savedAnswers as any[]).find((answer: any) => answer.questionId === analysis.id);
                     const hasAnswer = !!savedAnswer;
-                    const executiveSummary = hasAnswer ? 
-                      (savedAnswer.findings?.analysis?.executiveSummary || 
-                       savedAnswer.findings?.executiveSummary || 
-                       "No executive summary available") : 
-                      "No data collected";
+                    let executiveSummary = "No data collected";
+                    if (hasAnswer) {
+                      try {
+                        // Parse findings if it's a JSON string
+                        const findings = typeof savedAnswer.findings === 'string' 
+                          ? JSON.parse(savedAnswer.findings) 
+                          : savedAnswer.findings;
+                        
+                        executiveSummary = findings?.analysis?.executiveSummary || 
+                                         findings?.executiveSummary || 
+                                         savedAnswer.answer ||
+                                         "No executive summary available";
+                      } catch (e) {
+                        // If parsing fails, try to use the answer field directly
+                        executiveSummary = savedAnswer.answer || "No executive summary available";
+                      }
+                    }
                     
                     // Trim executive summary to 150 characters
                     const trimmedSummary = executiveSummary.length > 150 ? 
@@ -330,7 +342,19 @@ export default function StepFive({ applicationId, setCanProceed }: StepFiveProps
                                     <div>
                                       <h4 className="text-sm font-semibold text-slate-900 mb-2">Executive Summary</h4>
                                       <p className="text-sm text-slate-700 leading-relaxed">
-                                        {executiveSummary}
+                                        {(() => {
+                                          try {
+                                            const findings = typeof savedAnswer.findings === 'string' 
+                                              ? JSON.parse(savedAnswer.findings) 
+                                              : savedAnswer.findings;
+                                            return findings?.analysis?.executiveSummary || 
+                                                   findings?.executiveSummary || 
+                                                   savedAnswer.answer ||
+                                                   "No executive summary available";
+                                          } catch (e) {
+                                            return savedAnswer.answer || "No executive summary available";
+                                          }
+                                        })()}
                                       </p>
                                     </div>
 
@@ -355,27 +379,48 @@ export default function StepFive({ applicationId, setCanProceed }: StepFiveProps
                                     </div>
 
                                     {/* Findings */}
-                                    {savedAnswer.findings?.findings && (
-                                      <div>
-                                        <h4 className="text-sm font-semibold text-slate-900 mb-2">Key Findings</h4>
-                                        <ul className="space-y-2">
-                                          {savedAnswer.findings.findings.map((finding: string, index: number) => (
-                                            <li key={index} className="text-sm text-slate-700 flex">
-                                              <span className="text-slate-400 mr-2">•</span>
-                                              <span>{finding}</span>
-                                            </li>
-                                          ))}
-                                        </ul>
-                                      </div>
-                                    )}
+                                    {(() => {
+                                      try {
+                                        const findings = typeof savedAnswer.findings === 'string' 
+                                          ? JSON.parse(savedAnswer.findings) 
+                                          : savedAnswer.findings;
+                                        const findingsList = findings?.analysis?.findings || findings?.findings;
+                                        return findingsList && Array.isArray(findingsList) && (
+                                          <div>
+                                            <h4 className="text-sm font-semibold text-slate-900 mb-2">Key Findings</h4>
+                                            <ul className="space-y-2">
+                                              {findingsList.map((finding: string, index: number) => (
+                                                <li key={index} className="text-sm text-slate-700 flex">
+                                                  <span className="text-slate-400 mr-2">•</span>
+                                                  <span>{finding}</span>
+                                                </li>
+                                              ))}
+                                            </ul>
+                                          </div>
+                                        );
+                                      } catch (e) {
+                                        return null;
+                                      }
+                                    })()}
 
                                     {/* Tool Used */}
                                     <div>
                                       <h4 className="text-sm font-semibold text-slate-900 mb-2">Tool Used</h4>
                                       <div className="flex items-center space-x-2">
-                                        <Badge variant="outline">{savedAnswer.toolUsed}</Badge>
+                                        <Badge variant="outline">
+                                          {(() => {
+                                            try {
+                                              const execDetails = typeof savedAnswer.executionDetails === 'string' 
+                                                ? JSON.parse(savedAnswer.executionDetails) 
+                                                : savedAnswer.executionDetails;
+                                              return execDetails?.toolUsed || savedAnswer.toolUsed || 'Unknown';
+                                            } catch (e) {
+                                              return savedAnswer.toolUsed || 'Unknown';
+                                            }
+                                          })()}
+                                        </Badge>
                                         <span className="text-xs text-slate-500">
-                                          Execution Time: {savedAnswer.executionTime}ms
+                                          Data Points: {savedAnswer.dataPoints || 0}
                                         </span>
                                       </div>
                                     </div>
