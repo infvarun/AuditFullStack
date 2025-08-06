@@ -79,3 +79,4 @@ Preferred communication style: Simple, everyday language.
 - ✅ **Local Setup Guide**: Comprehensive LOCAL_SETUP.md with pip dependencies for local development
 - ✅ **File-Based Data Connectors**: Migrated from mock data to realistic file-based system using server/tools folder structure with CI-organized tool-specific data files (Excel, documents) for authentic audit data collection
 - ✅ **Enhanced Sample Questions**: Generated comprehensive audit question sheets (14 primary + 7 follow-up) with multi-tool integration targeting realistic data scenarios (16 multi-tool questions covering Access Controls, Change Management, Documentation, Quality Assurance)
+- ✅ **Clean Data Collection Display**: Fixed Step 4 JSON parsing issues with simple extraction of Executive Summary content from LLM responses, removing markdown formatting and displaying clean readable text (August 6, 2025)

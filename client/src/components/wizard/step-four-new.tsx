@@ -642,56 +642,37 @@ export default function StepFour({ applicationId, onNext, setCanProceed }: StepF
                             {(() => {
                               const data = execution.result.data;
                               
-                              // Debug: Log the complete data to console
-                              console.log("=== EXECUTION RESULT DATA DEBUG ===");
-                              console.log("Data type:", typeof data);
-                              console.log("Data length:", typeof data === 'string' ? data.length : 'Not a string');
-                              console.log("Full data:", data);
-                              console.log("=== END DEBUG ===");
-                              
-                              // Always show the complete content for now
                               if (!data) {
                                 return <p className="text-green-600">No data available.</p>;
                               }
 
-                              // Display clean analysis results
+                              // If it's an object with executiveSummary, show it nicely
                               if (typeof data === 'object' && data.executiveSummary) {
-                                // Properly parsed JSON object
-                                return (
-                                  <div className="space-y-3">
-                                    <div>
-                                      <h4 className="font-semibold text-green-800 mb-2">Executive Summary</h4>
-                                      <p className="text-green-700 leading-relaxed">{data.executiveSummary}</p>
-                                    </div>
-                                    {data.findings && Array.isArray(data.findings) && data.findings.length > 0 && (
-                                      <div>
-                                        <h4 className="font-semibold text-green-800 mb-2">Key Findings</h4>
-                                        <ul className="space-y-1">
-                                          {data.findings.slice(0, 3).map((finding: any, idx: number) => (
-                                            <li key={idx} className="text-green-700 text-sm">• {String(finding)}</li>
-                                          ))}
-                                        </ul>
-                                      </div>
-                                    )}
-                                  </div>
-                                );
-                              } else if (typeof data === 'string') {
-                                // String content - display as clean text (backend already extracted the summary)
                                 return (
                                   <div>
-                                    <h4 className="font-semibold text-green-800 mb-2">Analysis Summary</h4>
-                                    <p className="text-green-700 leading-relaxed whitespace-pre-wrap">{data}</p>
-                                  </div>
-                                );
-                              } else {
-                                // Fallback for any other format
-                                return (
-                                  <div>
-                                    <h4 className="font-semibold text-green-800 mb-2">Analysis Complete</h4>
-                                    <p className="text-green-700">Data analysis completed successfully.</p>
+                                    <p className="text-green-700 leading-relaxed">{data.executiveSummary}</p>
                                   </div>
                                 );
                               }
+
+                              // If it's a string, extract just the executiveSummary text
+                              if (typeof data === 'string') {
+                                let cleanText = data;
+                                
+                                // Remove markdown formatting
+                                cleanText = cleanText.replace(/```json/g, '').replace(/```/g, '');
+                                
+                                // Try to extract executiveSummary value
+                                const match = cleanText.match(/"executiveSummary":\s*"([^"]+)"/);
+                                if (match) {
+                                  return <p className="text-green-700 leading-relaxed">{match[1]}</p>;
+                                }
+                                
+                                // Fallback - show cleaned text
+                                return <p className="text-green-700 leading-relaxed">{cleanText.trim()}</p>;
+                              }
+
+                              return <p className="text-green-700">Analysis completed successfully.</p>;
                             })()}
                           </div>
                           <div className="grid grid-cols-2 gap-4 text-xs text-green-600">
