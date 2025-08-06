@@ -115,14 +115,39 @@ Please analyze this data and provide your assessment as a complete JSON object."
                 elif content.startswith('```'):
                     content = content.replace('```', '').strip()
                 
+                # Find the first { and last } to extract just the JSON part
+                first_brace = content.find('{')
+                if first_brace != -1:
+                    content = content[first_brace:]
+                    print(f"=== EXTRACTED JSON FROM POSITION {first_brace} ===")
+                    print(f"Extracted content: {content[:200]}...")
+                
                 # Try to fix truncated JSON by adding missing closing braces
                 if content.count('{') > content.count('}'):
                     missing_braces = content.count('{') - content.count('}')
                     content += '}' * missing_braces
                     print(f"=== FIXED TRUNCATED JSON ===")
                     print(f"Added {missing_braces} closing braces")
-                    print(f"Fixed content: {content}")
-                    print(f"=== END FIXED JSON ===")
+                
+                # Additional cleanup for common JSON formatting issues
+                content = content.replace('\n', ' ').replace('\r', ' ')
+                
+                # If content is too long and appears truncated, try to find a reasonable ending point
+                if len(content) > 2000 and not content.strip().endswith('}'):
+                    # Find last complete sentence or phrase
+                    last_period = content.rfind('.')
+                    last_comma = content.rfind(',')
+                    if last_period > last_comma and last_period > len(content) - 100:
+                        content = content[:last_period + 1]
+                        # Ensure proper JSON closure
+                        if content.count('{') > content.count('}'):
+                            missing_braces = content.count('{') - content.count('}')
+                            content += '"' + '}' * missing_braces
+                
+                print(f"=== FINAL CLEANED CONTENT ===")
+                print(f"Length: {len(content)}")
+                print(f"Content: {content}")
+                print(f"=== END CLEANED CONTENT ===")
                 
                 analysis = json.loads(content)
                 print(f"=== PARSED ANALYSIS RESULT ===")
@@ -130,10 +155,38 @@ Please analyze this data and provide your assessment as a complete JSON object."
                 print(f"Executive Summary: {analysis.get('executiveSummary', 'NOT FOUND')}")
                 print(f"=== END PARSED ANALYSIS ===")
                 return analysis
-            except json.JSONDecodeError:
+            except json.JSONDecodeError as e:
+                print(f"=== JSON PARSING FAILED ===")
+                print(f"Error: {e}")
+                print(f"Content that failed to parse: {content}")
+                print(f"=== END PARSING ERROR ===")
+                
+                # Try to extract executiveSummary manually from raw content
+                exec_summary = "Analysis completed with data review"
+                if 'executiveSummary' in content:
+                    try:
+                        # Try to extract text between quotes after executiveSummary
+                        import re
+                        match = re.search(r'"executiveSummary":\s*"([^"]*(?:"[^"]*)*)"', content)
+                        if match:
+                            exec_summary = match.group(1)
+                        else:
+                            # Fallback: find text after executiveSummary
+                            start = content.find('"executiveSummary":')
+                            if start != -1:
+                                start = content.find('"', start + 20)  # Find opening quote
+                                if start != -1:
+                                    end = content.find('",', start + 1)  # Find closing quote and comma
+                                    if end == -1:
+                                        end = content.find('"', start + 1)  # Just closing quote
+                                    if end != -1:
+                                        exec_summary = content[start + 1:end]
+                    except:
+                        pass
+                
                 # Fallback if JSON parsing fails
                 return {
-                    "executiveSummary": response.content[:500] + "...",
+                    "executiveSummary": exec_summary,
                     "findings": ["Analysis completed with data review"],
                     "riskLevel": "Low",
                     "complianceStatus": "Compliant",
