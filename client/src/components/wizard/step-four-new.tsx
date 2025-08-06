@@ -654,42 +654,44 @@ export default function StepFour({ applicationId, onNext, setCanProceed }: StepF
                                 return <p className="text-green-600">No data available.</p>;
                               }
 
-                              // Show complete content as JSON for debugging
-                              return (
-                                <div className="space-y-2">
-                                  <div>
-                                    <strong>Complete JSON Response:</strong>
-                                    <pre className="mt-1 text-green-600 text-xs whitespace-pre-wrap bg-green-50 p-2 rounded border overflow-auto max-h-40">
-                                      {typeof data === 'string' ? data : JSON.stringify(data, null, 2)}
-                                    </pre>
+                              // Display clean analysis results
+                              if (typeof data === 'object' && data.executiveSummary) {
+                                // Properly parsed JSON object
+                                return (
+                                  <div className="space-y-3">
+                                    <div>
+                                      <h4 className="font-semibold text-green-800 mb-2">Executive Summary</h4>
+                                      <p className="text-green-700 leading-relaxed">{data.executiveSummary}</p>
+                                    </div>
+                                    {data.findings && Array.isArray(data.findings) && data.findings.length > 0 && (
+                                      <div>
+                                        <h4 className="font-semibold text-green-800 mb-2">Key Findings</h4>
+                                        <ul className="space-y-1">
+                                          {data.findings.slice(0, 3).map((finding: any, idx: number) => (
+                                            <li key={idx} className="text-green-700 text-sm">• {String(finding)}</li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                    )}
                                   </div>
-                                  {/* Try to extract executiveSummary if possible */}
-                                  {(() => {
-                                    try {
-                                      let parsed = data;
-                                      if (typeof data === 'string') {
-                                        parsed = JSON.parse(data);
-                                      }
-                                      if (parsed.executiveSummary) {
-                                        return (
-                                          <div>
-                                            <strong>Executive Summary (Extracted):</strong>
-                                            <p className="mt-1 text-green-600 leading-relaxed">{parsed.executiveSummary}</p>
-                                          </div>
-                                        );
-                                      }
-                                    } catch (e) {
-                                      return (
-                                        <div>
-                                          <strong>Parse Error:</strong>
-                                          <p className="mt-1 text-red-600">Could not parse JSON: {e.message}</p>
-                                        </div>
-                                      );
-                                    }
-                                    return null;
-                                  })()}
-                                </div>
-                              );
+                                );
+                              } else if (typeof data === 'string') {
+                                // String content - display as clean text (backend already extracted the summary)
+                                return (
+                                  <div>
+                                    <h4 className="font-semibold text-green-800 mb-2">Analysis Summary</h4>
+                                    <p className="text-green-700 leading-relaxed whitespace-pre-wrap">{data}</p>
+                                  </div>
+                                );
+                              } else {
+                                // Fallback for any other format
+                                return (
+                                  <div>
+                                    <h4 className="font-semibold text-green-800 mb-2">Analysis Complete</h4>
+                                    <p className="text-green-700">Data analysis completed successfully.</p>
+                                  </div>
+                                );
+                              }
                             })()}
                           </div>
                           <div className="grid grid-cols-2 gap-4 text-xs text-green-600">
