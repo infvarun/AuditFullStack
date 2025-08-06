@@ -94,7 +94,7 @@ Audit Question: {question}
 Data to Analyze:
 {str(data)}
 
-Please analyze this data and provide your assessment as a complete JSON object."""
+Please analyze this data and provide your assessment as a complete JSON object. Ensure your response is complete and not truncated."""
 
             response = self.llm.invoke([
                 SystemMessage(content=system_prompt),
@@ -131,18 +131,6 @@ Please analyze this data and provide your assessment as a complete JSON object."
                 
                 # Additional cleanup for common JSON formatting issues
                 content = content.replace('\n', ' ').replace('\r', ' ')
-                
-                # If content is too long and appears truncated, try to find a reasonable ending point
-                if len(content) > 2000 and not content.strip().endswith('}'):
-                    # Find last complete sentence or phrase
-                    last_period = content.rfind('.')
-                    last_comma = content.rfind(',')
-                    if last_period > last_comma and last_period > len(content) - 100:
-                        content = content[:last_period + 1]
-                        # Ensure proper JSON closure
-                        if content.count('{') > content.count('}'):
-                            missing_braces = content.count('{') - content.count('}')
-                            content += '"' + '}' * missing_braces
                 
                 print(f"=== FINAL CLEANED CONTENT ===")
                 print(f"Length: {len(content)}")
