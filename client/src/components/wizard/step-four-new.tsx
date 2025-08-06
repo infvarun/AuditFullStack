@@ -641,63 +641,88 @@ export default function StepFour({ applicationId, onNext, setCanProceed }: StepF
                           </div>
                           <div className="text-sm text-green-700 mb-2">
                             {(() => {
-                              try {
-                                // Try to parse JSON and extract structured content
-                                let jsonData = execution.result.data;
-                                if (typeof jsonData === 'string') {
-                                  jsonData = JSON.parse(jsonData);
-                                }
-
-                                // Handle nested analysis structure
-                                const analysis = jsonData.analysis || jsonData;
+                              // Function to render structured content
+                              const renderStructuredContent = (data: any) => {
+                                if (!data) return null;
                                 
                                 return (
-                                  <div className="space-y-2">
-                                    {analysis.executiveSummary && (
+                                  <div className="space-y-3">
+                                    {data.executiveSummary && (
                                       <div>
-                                        <span className="font-medium">Executive Summary:</span>
-                                        <p className="mt-1 text-green-600">{analysis.executiveSummary}</p>
+                                        <div className="font-medium text-green-800">Executive Summary:</div>
+                                        <p className="mt-1 text-green-600 leading-relaxed">{data.executiveSummary}</p>
                                       </div>
                                     )}
-                                    {analysis.findings && analysis.findings.length > 0 && (
+                                    {data.findings && Array.isArray(data.findings) && data.findings.length > 0 && (
                                       <div>
-                                        <span className="font-medium">Key Findings:</span>
-                                        <ul className="mt-1 text-green-600 list-disc list-inside">
-                                          {analysis.findings.slice(0, 3).map((finding: string, idx: number) => (
-                                            <li key={idx}>{finding}</li>
+                                        <div className="font-medium text-green-800">Key Findings:</div>
+                                        <ul className="mt-1 text-green-600 space-y-1">
+                                          {data.findings.slice(0, 3).map((finding: any, idx: number) => (
+                                            <li key={idx} className="flex items-start">
+                                              <span className="text-green-500 mr-2 mt-1.5">•</span>
+                                              <span>{typeof finding === 'string' ? finding : finding.finding || String(finding)}</span>
+                                            </li>
                                           ))}
                                         </ul>
                                       </div>
                                     )}
-                                    {analysis.recommendations && analysis.recommendations.length > 0 && (
+                                    {data.recommendations && Array.isArray(data.recommendations) && data.recommendations.length > 0 && (
                                       <div>
-                                        <span className="font-medium">Recommendations:</span>
-                                        <ul className="mt-1 text-green-600 list-disc list-inside">
-                                          {analysis.recommendations.slice(0, 2).map((rec: string, idx: number) => (
-                                            <li key={idx}>{rec}</li>
+                                        <div className="font-medium text-green-800">Recommendations:</div>
+                                        <ul className="mt-1 text-green-600 space-y-1">
+                                          {data.recommendations.slice(0, 2).map((rec: any, idx: number) => (
+                                            <li key={idx} className="flex items-start">
+                                              <span className="text-green-500 mr-2 mt-1.5">•</span>
+                                              <span>{typeof rec === 'string' ? rec : rec.recommendation || String(rec)}</span>
+                                            </li>
                                           ))}
                                         </ul>
-                                      </div>
-                                    )}
-                                    {/* Show a clean summary if no structured content */}
-                                    {!analysis.executiveSummary && !analysis.findings && !analysis.recommendations && (
-                                      <div>
-                                        <span className="font-medium">Analysis Summary:</span>
-                                        <p className="mt-1 text-green-600">
-                                          {typeof jsonData === 'string' ? jsonData : 
-                                           analysis.summary || 
-                                           JSON.stringify(jsonData).substring(0, 200) + '...'}
-                                        </p>
                                       </div>
                                     )}
                                   </div>
                                 );
-                              } catch (e) {
-                                // Fallback to displaying the raw data if parsing fails
+                              };
+
+                              try {
+                                let data = execution.result.data;
+                                
+                                // Handle string JSON
+                                if (typeof data === 'string' && data.trim().startsWith('{')) {
+                                  try {
+                                    data = JSON.parse(data);
+                                  } catch {
+                                    // If JSON parsing fails, show as text
+                                    return (
+                                      <div>
+                                        <div className="font-medium text-green-800">Analysis Result:</div>
+                                        <p className="mt-1 text-green-600 leading-relaxed">{data}</p>
+                                      </div>
+                                    );
+                                  }
+                                }
+
+                                // Try different data structures
+                                const analysis = data?.analysis || data;
+                                const structuredContent = renderStructuredContent(analysis);
+                                
+                                if (structuredContent) {
+                                  return structuredContent;
+                                }
+
+                                // Fallback to formatted text
                                 return (
                                   <div>
-                                    <span className="font-medium">Raw Result:</span>
-                                    <p className="mt-1 text-green-600">{String(execution.result.data).substring(0, 300)}...</p>
+                                    <div className="font-medium text-green-800">Analysis Result:</div>
+                                    <p className="mt-1 text-green-600 leading-relaxed">
+                                      {typeof data === 'string' ? data : JSON.stringify(data, null, 2)}
+                                    </p>
+                                  </div>
+                                );
+                              } catch (error) {
+                                return (
+                                  <div>
+                                    <div className="font-medium text-green-800">Analysis Result:</div>
+                                    <p className="mt-1 text-green-600">{String(execution.result.data)}</p>
                                   </div>
                                 );
                               }
