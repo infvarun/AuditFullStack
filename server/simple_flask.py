@@ -1815,19 +1815,58 @@ def get_question_answers(application_id):
 def download_execution_results_excel(application_id):
     """Generate and download Excel file with Step 5 execution results and analysis"""
     try:
-        # Get saved answers from the same endpoint as Step 5
-        response = get_question_answers(application_id)
-        if response[1] != 200:
-            return response
-        
-        answers_data = response[0].get_json()
-        
-        # Get application details
+        # Get database connection and fetch answers directly 
         conn = get_db_connection()
         if not conn:
             return jsonify({'error': 'Database connection failed'}), 500
 
         cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        # Get data from agent_executions (Step 4 execution results)
+        cursor.execute("""
+            SELECT ae.question_id, ae.result, ae.created_at, dr.question, dr.process, dr.sub_process
+            FROM agent_executions ae
+            LEFT JOIN data_requests dr ON CAST(ae.question_id AS INTEGER) = dr.question_number 
+                AND dr.application_id = ae.application_id
+            WHERE ae.application_id = %s
+            ORDER BY CAST(ae.question_id AS INTEGER)
+        """, (application_id,))
+        
+        agent_results = cursor.fetchall()
+        answers_data = []
+        
+        for agent_data in agent_results:
+            try:
+                result_data = json.loads(agent_data['result']) if agent_data['result'] else {}
+                confidence = result_data.get('analysis', {}).get('confidence', 0)
+                tool_used = result_data.get('toolsUsed', [{}])[0] if result_data.get('toolsUsed') else 'Unknown'
+                
+                answers_data.append({
+                    'questionId': agent_data['question_id'],
+                    'originalQuestion': agent_data['question'] or f"Question {agent_data['question_id']}",
+                    'answer': result_data.get('executiveSummary', 'No summary available'),
+                    'riskLevel': result_data.get('riskLevel', 'Not assessed'),
+                    'complianceStatus': result_data.get('complianceStatus', 'Not assessed'),
+                    'dataPoints': result_data.get('dataPoints', 0),
+                    'confidence': round(confidence, 2) if isinstance(confidence, (int, float)) else 0,
+                    'toolUsed': tool_used if isinstance(tool_used, str) else 'Unknown',
+                    'findings': result_data.get('findings', [])
+                })
+            except (json.JSONDecodeError, KeyError) as e:
+                # Handle malformed JSON gracefully
+                answers_data.append({
+                    'questionId': agent_data['question_id'],
+                    'originalQuestion': agent_data['question'] or f"Question {agent_data['question_id']}",
+                    'answer': 'Data parsing error',
+                    'riskLevel': 'Not assessed',
+                    'complianceStatus': 'Not assessed',
+                    'dataPoints': 0,
+                    'confidence': 0,
+                    'toolUsed': 'Unknown',
+                    'findings': []
+                })
+        
+        # Get application details using the same connection
         cursor.execute(
             "SELECT name, audit_name FROM applications WHERE id = %s",
             (application_id, ))
