@@ -677,7 +677,14 @@ export default function StepFour({ applicationId, onNext, setCanProceed }: StepF
                                     // JSON parsing failed, show as text
                                   }
                                 }
-                                // Show string as is
+                                // Extract executiveSummary from JSON string
+                                if (data.includes('executiveSummary')) {
+                                  const match = data.match(/"executiveSummary":\s*"([^"]+)"/);
+                                  if (match) {
+                                    return <p className="text-green-600 leading-relaxed">{match[1]}</p>;
+                                  }
+                                }
+                                // Show string as is if no executiveSummary found
                                 return <p className="text-green-600 whitespace-pre-wrap">{data}</p>;
                               }
 
