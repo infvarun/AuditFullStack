@@ -1810,6 +1810,113 @@ def get_question_answers(application_id):
             conn.close()
 
 
+@app.route('/api/applications/<int:application_id>/download-execution-results',
+           methods=['GET'])
+def download_execution_results_excel(application_id):
+    """Generate and download Excel file with Step 5 execution results and analysis"""
+    try:
+        # Get saved answers from the same endpoint as Step 5
+        response = get_question_answers(application_id)
+        if response[1] != 200:
+            return response
+        
+        answers_data = response[0].get_json()
+        
+        # Get application details
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'error': 'Database connection failed'}), 500
+
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute(
+            "SELECT name, audit_name FROM applications WHERE id = %s",
+            (application_id, ))
+        app_data = cursor.fetchone()
+        if not app_data:
+            return jsonify({'error': 'Application not found'}), 404
+
+        # Create Excel file
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment
+        from openpyxl.utils import get_column_letter
+        import io
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Execution Results & Analysis"
+
+        # Headers
+        headers = [
+            "Question ID", "Original Question", "Executive Summary", 
+            "Risk Level", "Compliance Status", "Data Points", 
+            "Confidence", "Tool Used", "Findings Summary"
+        ]
+        
+        # Style headers
+        header_font = Font(bold=True, color="FFFFFF")
+        header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+        
+        for col, header in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+
+        # Data rows
+        for row_idx, answer in enumerate(answers_data, 2):
+            # Extract findings summary
+            findings = answer.get('findings', [])
+            findings_summary = "; ".join([f.get('finding', '') for f in findings[:3]]) if findings else "No findings"
+            
+            data_row = [
+                answer.get('questionId', ''),
+                answer.get('originalQuestion', 'Question not available'),
+                answer.get('answer', ''),
+                answer.get('riskLevel', 'Not assessed'),
+                answer.get('complianceStatus', 'Not assessed'),
+                answer.get('dataPoints', 0),
+                answer.get('confidence', 0),
+                answer.get('toolUsed', 'Unknown'),
+                findings_summary
+            ]
+            
+            for col, value in enumerate(data_row, 1):
+                ws.cell(row=row_idx, column=col, value=value)
+
+        # Auto-adjust column widths
+        for col in range(1, len(headers) + 1):
+            column_letter = get_column_letter(col)
+            max_length = 0
+            for row in ws[column_letter]:
+                try:
+                    if len(str(row.value)) > max_length:
+                        max_length = len(str(row.value))
+                except:
+                    pass
+            adjusted_width = min(max_length + 2, 50)  # Cap at 50 characters
+            ws.column_dimensions[column_letter].width = adjusted_width
+
+        # Save to memory
+        excel_buffer = io.BytesIO()
+        wb.save(excel_buffer)
+        excel_buffer.seek(0)
+
+        # Return as downloadable file
+        from flask import make_response
+        response = make_response(excel_buffer.getvalue())
+        response.headers['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        response.headers['Content-Disposition'] = f'attachment; filename="{app_data["audit_name"]}_Execution_Results.xlsx"'
+        
+        return response
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        if 'conn' in locals() and conn:
+            cursor.close()
+            conn.close()
+
+
 @app.route('/api/applications/<int:application_id>/download-excel',
            methods=['GET'])
 def download_excel_with_answers(application_id):

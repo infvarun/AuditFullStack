@@ -433,48 +433,31 @@ export default function StepFive({ applicationId, setCanProceed }: StepFiveProps
             </div>
           </div>
 
-          {/* Generated Documents */}
+          {/* Export Results */}
           <div className="bg-slate-50 rounded-lg p-4">
             <h3 className="text-sm font-medium text-slate-900 mb-4">
-              Generated Documents
+              Export Results
             </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="bg-white rounded-lg p-4 flex items-center space-x-3">
-                <FileText className="h-5 w-5 text-blue-600" />
-                <div className="flex-1">
-                  <h4 className="text-sm font-medium text-slate-900">
-                    Audit Report Summary
-                  </h4>
-                  <p className="text-xs text-slate-500">
-                    {completed} questions completed • {total - completed} pending
-                  </p>
-                </div>
-                <Button size="sm" variant="outline">
-                  <Download className="h-4 w-4 mr-2" />
-                  Download
-                </Button>
+            <div className="bg-white rounded-lg p-4 flex items-center space-x-3">
+              <FileText className="h-5 w-5 text-blue-600" />
+              <div className="flex-1">
+                <h4 className="text-sm font-medium text-slate-900">
+                  Execution Results & Analysis
+                </h4>
+                <p className="text-xs text-slate-500">
+                  {completed} questions with detailed findings and analysis • {(savedAnswers as any[]).reduce((sum: number, answer: any) => sum + (answer.dataPoints || 0), 0)} total records
+                </p>
               </div>
-              <div className="bg-white rounded-lg p-4 flex items-center space-x-3">
-                <FileText className="h-5 w-5 text-green-600" />
-                <div className="flex-1">
-                  <h4 className="text-sm font-medium text-slate-900">
-                    Data Collection Log
-                  </h4>
-                  <p className="text-xs text-slate-500">
-                    {(savedAnswers as any[]).reduce((sum: number, answer: any) => sum + (answer.dataPoints || 0), 0)} total records collected
-                  </p>
-                </div>
-                <Button 
-                  size="sm" 
-                  variant="outline"
-                  onClick={() => {
-                    window.open(`http://localhost:8000/api/applications/${applicationId}/download-excel`, '_blank');
-                  }}
-                >
-                  <Download className="h-4 w-4 mr-2" />
-                  Download
-                </Button>
-              </div>
+              <Button 
+                size="sm" 
+                variant="outline"
+                onClick={() => {
+                  window.open(`http://localhost:8000/api/applications/${applicationId}/download-execution-results`, '_blank');
+                }}
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Download Excel
+              </Button>
             </div>
           </div>
 
