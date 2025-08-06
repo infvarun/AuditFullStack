@@ -1,0 +1,43 @@
+WORK INSTRUCTIONS - STARK G4 AUDIT PROCEDURES
+
+1. AUDIT INITIATION
+Step 1: Create new audit application in system
+Step 2: Upload primary and followup question sheets
+Step 3: Configure tool connectors for data sources
+Step 4: Execute AI agents for data collection
+Step 5: Review and validate results
+
+2. DATA COLLECTION PROCEDURES
+- SQL Server: Query user roles, access logs, and system configurations
+- Oracle: Review database schemas, user privileges, and performance metrics
+- ServiceNow: Extract change requests, incidents, and service requests
+- Jira: Analyze tickets, project status, and issue resolution
+- QTest: Review test execution results and defect tracking
+- Gnosis: Search documentation, policies, and procedures
+
+3. QUALITY ASSURANCE STEPS
+- Verify data completeness and accuracy
+- Cross-reference findings across multiple sources
+- Validate compliance with audit standards
+- Document any exceptions or anomalies
+- Review findings with audit team
+
+4. REPORTING PROCEDURES
+- Generate executive summary of findings
+- Create detailed audit reports by category
+- Export data to Excel for stakeholder review
+- Schedule presentation meetings with management
+- Archive audit documentation for compliance
+
+5. ESCALATION PROCEDURES
+- Critical findings: Immediate notification to audit manager
+- High-risk issues: Report within 24 hours
+- Medium-risk issues: Include in weekly status report
+- Low-risk issues: Document in final audit report
+
+6. DOCUMENTATION REQUIREMENTS
+- All audit steps must be documented
+- Evidence must be preserved and accessible
+- Findings must be traceable to source data
+- Reports must be reviewed and approved
+- Archives must be maintained per retention policy

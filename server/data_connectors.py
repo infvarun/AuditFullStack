@@ -2,16 +2,16 @@
 """
 Data Connectors for File-Based Tool Integration
 
-This module provides connectors for reading data from NAS paths organized by CI and tool type.
+This module provides connectors for reading data from server/tools folder organized by CI and tool type.
 Each CI has a folder with subfolders for each tool containing structured data files.
 
-NAS Structure:
-/nas_path/
+Tools Folder Structure:
+server/tools/
 ├── CI21324354/
 │   ├── SQL_Server/
 │   │   ├── User_Role.xlsx
 │   │   ├── Study.xlsx
-│   │   └── ...
+│   │   └── Access_Log.xlsx
 │   ├── Oracle/
 │   │   ├── User_Role.xlsx
 │   │   ├── Study.xlsx
@@ -23,9 +23,9 @@ NAS Structure:
 │   ├── QTest/
 │   │   └── test_executions.xlsx
 │   └── Gnosis/
-│       ├── Support_Plan.docx
-│       ├── Design_Document.pdf
-│       └── Work_Instructions.docx
+│       ├── Support_Plan.txt
+│       ├── Design_Document.txt
+│       └── Work_Instructions.txt
 """
 
 import os
@@ -48,11 +48,11 @@ from langchain_core.messages import SystemMessage, HumanMessage
 class DataConnector:
     """Base class for all data connectors"""
     
-    def __init__(self, nas_path: str, ci_id: str, llm: ChatOpenAI):
-        self.nas_path = nas_path
+    def __init__(self, tools_path: str, ci_id: str, llm: ChatOpenAI):
+        self.tools_path = tools_path
         self.ci_id = ci_id
         self.llm = llm
-        self.ci_folder = os.path.join(nas_path, ci_id)
+        self.ci_folder = os.path.join(tools_path, ci_id)
         
     def get_tool_folder(self, tool_name: str) -> str:
         """Get the folder path for a specific tool"""
@@ -394,8 +394,8 @@ class GnosisConnector(DataConnector):
 class DataConnectorFactory:
     """Factory for creating appropriate data connectors"""
     
-    def __init__(self, nas_path: str, ci_id: str, llm: ChatOpenAI):
-        self.nas_path = nas_path
+    def __init__(self, tools_path: str, ci_id: str, llm: ChatOpenAI):
+        self.tools_path = tools_path
         self.ci_id = ci_id
         self.llm = llm
     
@@ -414,7 +414,7 @@ class DataConnectorFactory:
         if not connector_class:
             raise ValueError(f"Unsupported tool type: {tool_type}")
         
-        return connector_class(self.nas_path, self.ci_id, self.llm)
+        return connector_class(self.tools_path, self.ci_id, self.llm)
     
     def execute_tool_query(self, tool_type: str, question: str, **kwargs) -> Dict[str, Any]:
         """Execute a query using the appropriate tool connector"""

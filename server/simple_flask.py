@@ -1186,19 +1186,19 @@ def execute_agent_request():
         category = result['category']
         subcategory = result['subcategory']
         
-        # Configuration for NAS path - this should be configurable via environment or settings
-        nas_path = os.getenv('NAS_DATA_PATH', './demo/nas_data')  # Default to demo folder
+        # Configuration for tools data path - using server/tools folder
+        tools_path = os.path.join(os.path.dirname(__file__), 'tools')
         
         # Ensure the path exists
-        if not os.path.exists(os.path.join(nas_path, ci_id)):
+        if not os.path.exists(os.path.join(tools_path, ci_id)):
             return jsonify({
-                'error': f'NAS data folder not found for CI {ci_id}. Expected path: {nas_path}/{ci_id}',
-                'suggestion': 'Please ensure data files are properly organized in the NAS structure'
+                'error': f'Tools data folder not found for CI {ci_id}. Expected path: {tools_path}/{ci_id}',
+                'suggestion': 'Please ensure data files are properly organized in the tools folder structure'
             }), 404
         
         try:
             # Create data connector factory
-            connector_factory = DataConnectorFactory(nas_path, ci_id, llm)
+            connector_factory = DataConnectorFactory(tools_path, ci_id, llm)
             
             # Execute tool query using file-based data
             start_time = datetime.now()
@@ -1250,7 +1250,7 @@ def execute_agent_request():
                     'dataPoints': execution_result.get('dataPoints', 0),
                     'duration': execution_result.get('duration', 0),
                     'toolUsed': tool_type,
-                    'dataSource': f'{nas_path}/{ci_id}/{tool_type.replace("_", " ").title()}'
+                    'dataSource': f'{tools_path}/{ci_id}/{tool_type.replace("_", " ").title()}'
                 })
             ))
             
@@ -2610,6 +2610,7 @@ Please try again or contact support if issues persist."""
             cursor.close()
         if conn:
             conn.close()
+
 
 if __name__ == '__main__':
     print("🐍 Starting Simple Flask API server...")
