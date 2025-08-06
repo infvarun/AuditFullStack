@@ -1137,13 +1137,24 @@ def execute_agent():
             execution_result = demo_agent.execute_data_collection(
                 question_analysis)
 
-            # Store execution result in database
+            # Store or update execution result in database
             cursor.execute(
                 """
                 INSERT INTO agent_executions 
                 (application_id, question_id, tool_used, execution_time, 
                  data_collected, findings, status, confidence, risk_level, compliance_status, executed_at)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (application_id, question_id) 
+                DO UPDATE SET
+                    tool_used = EXCLUDED.tool_used,
+                    execution_time = EXCLUDED.execution_time,
+                    data_collected = EXCLUDED.data_collected,
+                    findings = EXCLUDED.findings,
+                    status = EXCLUDED.status,
+                    confidence = EXCLUDED.confidence,
+                    risk_level = EXCLUDED.risk_level,
+                    compliance_status = EXCLUDED.compliance_status,
+                    executed_at = EXCLUDED.executed_at
                 RETURNING id
             """,
                 (application_id, execution_result['questionId'],
