@@ -22,6 +22,7 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_core.prompts import ChatPromptTemplate, SystemMessagePromptTemplate, HumanMessagePromptTemplate
 import shutil
+import time
 
 # Load environment variables
 load_dotenv()
@@ -1144,60 +1145,89 @@ def test_endpoint():
         'database_available': get_db_connection() is not None
     }), 200
 
-# Alternative Agent Execution API (legacy endpoint)
+# File-Based Agent Execution API
 @app.route('/api/agents/execute', methods=['POST'])
 def execute_agent_request():
-    """Execute AI agent for data collection with mock realistic responses"""
+    """Execute AI agent for data collection using file-based connectors"""
     try:
-        import sys
-        import os
+        from data_connectors import DataConnectorFactory
         
-        # Add demo directory to Python path
-        demo_path = os.path.join(os.path.dirname(__file__), '..', 'demo')
-        if demo_path not in sys.path:
-            sys.path.append(demo_path)
-            
+        data = request.get_json()
+        application_id = data.get('applicationId')
+        question_id = data.get('questionId')
+        prompt = data.get('prompt', '')
+        tool_type = data.get('toolType', 'sql_server')
+        connector_id = data.get('connectorId')
+        
+        if not all([application_id, question_id, prompt]):
+            return jsonify({'error': 'Missing required fields: applicationId, questionId, prompt'}), 400
+        
+        # Get application and question details
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'error': 'Database connection failed'}), 500
+        
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Get application CI ID for data path
+        cursor.execute("""
+            SELECT app.ci_id, qa.original_question, qa.category, qa.subcategory 
+            FROM applications app
+            JOIN question_analyses qa ON app.id = qa.application_id
+            WHERE app.id = %s AND qa.question_id = %s
+        """, (application_id, question_id))
+        
+        result = cursor.fetchone()
+        if not result:
+            return jsonify({'error': 'Application or question not found'}), 404
+        
+        ci_id = result['ci_id']
+        original_question = result['original_question']
+        category = result['category']
+        subcategory = result['subcategory']
+        
+        # Configuration for NAS path - this should be configurable via environment or settings
+        nas_path = os.getenv('NAS_DATA_PATH', './demo/nas_data')  # Default to demo folder
+        
+        # Ensure the path exists
+        if not os.path.exists(os.path.join(nas_path, ci_id)):
+            return jsonify({
+                'error': f'NAS data folder not found for CI {ci_id}. Expected path: {nas_path}/{ci_id}',
+                'suggestion': 'Please ensure data files are properly organized in the NAS structure'
+            }), 404
+        
         try:
-            from mock_agent_executor import MockAgentExecutor
+            # Create data connector factory
+            connector_factory = DataConnectorFactory(nas_path, ci_id, llm)
             
-            data = request.get_json()
-            application_id = data.get('applicationId')
-            question_id = data.get('questionId')
-            prompt = data.get('prompt', '')
-            tool_type = data.get('toolType', 'sql_server')
-            connector_id = data.get('connectorId')
+            # Execute tool query using file-based data
+            start_time = datetime.now()
+            execution_result = connector_factory.execute_tool_query(tool_type, original_question)
+            end_time = datetime.now()
+            duration = (end_time - start_time).total_seconds()
             
-            if not all([application_id, question_id, prompt]):
-                return jsonify({'error': 'Missing required fields: applicationId, questionId, prompt'}), 400
-            
-            # Get question details
-            conn = get_db_connection()
-            if not conn:
-                return jsonify({'error': 'Database connection failed'}), 500
-            
-            cursor = conn.cursor(cursor_factory=RealDictCursor)
-            cursor.execute("""
-                SELECT original_question, category, subcategory 
-                FROM question_analyses 
-                WHERE application_id = %s AND question_id = %s
-            """, (application_id, question_id))
-            
-            question_row = cursor.fetchone()
-            original_question = question_row['original_question'] if question_row else 'Unknown Question'
-            
-            # Create question analysis object for mock executor
-            question_analysis = {
-                'questionId': question_id,
-                'originalQuestion': original_question,
-                'toolSuggestion': tool_type,
-                'aiPrompt': prompt,
-                'category': question_row['category'] if question_row else 'General',
-                'subcategory': question_row['subcategory'] if question_row else 'Unknown'
-            }
-            
-            # Execute mock agent
-            executor = MockAgentExecutor()
-            execution_result = executor.execute_data_collection(question_analysis)
+            # Check if execution had errors
+            if 'error' in execution_result:
+                # Handle file not found or connector issues with fallback
+                fallback_result = {
+                    'analysis': {
+                        'executiveSummary': f'Data collection attempted for: {original_question}. {execution_result["error"]}',
+                        'findings': [f'Data source issue: {execution_result["error"]}'],
+                        'riskLevel': 'Medium',
+                        'complianceStatus': 'Review Required',
+                        'dataPoints': 0,
+                        'keyInsights': ['Data source configuration needed'],
+                        'recommendations': ['Verify data file paths and structure']
+                    },
+                    'dataPoints': 0,
+                    'duration': duration,
+                    'status': 'completed_with_issues'
+                }
+                execution_result = fallback_result
+            else:
+                # Add duration and status to successful results
+                execution_result['duration'] = duration
+                execution_result['status'] = 'completed'
             
             # Store execution result in database
             cursor.execute("""
@@ -1214,50 +1244,62 @@ def execute_agent_request():
                 connector_id,
                 prompt,
                 json.dumps(execution_result),
-                'completed',
+                execution_result.get('status', 'completed'),
                 json.dumps({
-                    'findings': execution_result.get('findings', []),
+                    'findings': execution_result.get('analysis', {}).get('findings', []),
                     'dataPoints': execution_result.get('dataPoints', 0),
-                    'duration': execution_result.get('duration', 0)
+                    'duration': execution_result.get('duration', 0),
+                    'toolUsed': tool_type,
+                    'dataSource': f'{nas_path}/{ci_id}/{tool_type.replace("_", " ").title()}'
                 })
             ))
             
             execution_id = cursor.fetchone()['id']
             conn.commit()
             
+            # Return response in expected format
+            analysis = execution_result.get('analysis', {})
             return jsonify({
                 'executionId': execution_id,
-                'status': 'completed',
-                'findings': execution_result.get('findings', []),
-                'analysis': execution_result.get('analysis', {}),
+                'status': execution_result.get('status', 'completed'),
+                'findings': analysis.get('findings', []),
+                'analysis': {
+                    'executiveSummary': analysis.get('executiveSummary', 'Data collection completed'),
+                    'riskLevel': analysis.get('riskLevel', 'Low'),
+                    'complianceStatus': analysis.get('complianceStatus', 'Compliant'),
+                    'totalDataPoints': execution_result.get('dataPoints', 0)
+                },
                 'dataPoints': execution_result.get('dataPoints', 0),
-                'collectedData': execution_result.get('collectedData', {}),
+                'collectedData': execution_result.get('rawData', {}),
                 'duration': execution_result.get('duration', 0),
-                'timestamp': execution_result.get('endTime', datetime.now().isoformat())
+                'timestamp': end_time.isoformat(),
+                'dataSource': f'{tool_type} files from CI {ci_id}'
             }), 200
             
-        except ImportError:
-            # Fallback if mock executor not available
+        except Exception as connector_error:
+            print(f"Connector error: {connector_error}")
+            # Fallback to basic response if connector fails
             return jsonify({
-                'executionId': f"mock_{question_id}_{int(time.time())}",
-                'status': 'completed',
+                'executionId': f"fallback_{question_id}_{int(datetime.now().timestamp())}",
+                'status': 'completed_with_issues',
                 'findings': [
                     {
                         'tool': tool_type,
-                        'finding': f'Mock analysis completed for: {original_question}',
-                        'severity': 'Info',
-                        'details': 'This is a simulated response for demonstration purposes.'
+                        'finding': f'Data collection attempted for: {original_question}',
+                        'severity': 'Warning',
+                        'details': f'Connector issue: {str(connector_error)}'
                     }
                 ],
                 'analysis': {
-                    'executiveSummary': f'Comprehensive audit analysis completed for question: {original_question}. Mock data collection identified key areas for review.',
-                    'riskLevel': 'Low',
-                    'complianceStatus': 'Compliant',
-                    'totalDataPoints': 25
+                    'executiveSummary': f'Data collection attempted for question: {original_question}. Technical issue encountered with {tool_type} connector.',
+                    'riskLevel': 'Medium',
+                    'complianceStatus': 'Review Required',
+                    'totalDataPoints': 0
                 },
-                'dataPoints': 25,
-                'duration': 2.5,
-                'timestamp': datetime.now().isoformat()
+                'dataPoints': 0,
+                'duration': 1.0,
+                'timestamp': datetime.now().isoformat(),
+                'dataSource': f'Connector error for {tool_type}'
             }), 200
             
     except Exception as e:
