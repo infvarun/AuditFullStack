@@ -1717,8 +1717,7 @@ def get_question_answers(application_id):
         # First get data from agent_executions (Step 4 execution results)
         cursor.execute(
             """
-            SELECT question_id, result, tool_used, confidence, risk_level, compliance_status, 
-                   data_collected, execution_time, findings, created_at
+            SELECT question_id, result, tool_used, created_at, execution_details
             FROM agent_executions 
             WHERE application_id = %s
         """, (application_id, ))
@@ -1771,15 +1770,12 @@ def get_question_answers(application_id):
                 combined_answer.update({
                     'answer': result_data.get('analysis', {}).get('executiveSummary', ''),
                     'findings': result_data.get('findings', []),
-                    'riskLevel': agent_data['risk_level'] or result_data.get('riskLevel', 'Low'),
-                    'complianceStatus': agent_data['compliance_status'] or result_data.get('complianceStatus', 'Compliant'),
-                    'dataPoints': agent_data['data_collected'] or result_data.get('dataPoints', 0),
-                    'confidence': agent_data['confidence'] or result_data.get('analysis', {}).get('confidence', 0),
-                    'toolUsed': (result_data.get('toolsUsed', ['Unknown'])[0] if result_data.get('toolsUsed') else 'Unknown'),
-                    'executionDetails': {
-                        'duration': agent_data['execution_time'],
-                        'toolUsed': (result_data.get('toolsUsed', ['Unknown'])[0] if result_data.get('toolsUsed') else 'Unknown')
-                    },
+                    'riskLevel': result_data.get('riskLevel', 'Low'),
+                    'complianceStatus': result_data.get('complianceStatus', 'Compliant'),
+                    'dataPoints': result_data.get('dataPoints', 0),
+                    'confidence': result_data.get('analysis', {}).get('confidence', 0),
+                    'toolUsed': agent_data['tool_used'] or 'Unknown',
+                    'executionDetails': agent_data.get('execution_details', {}),
                     'createdAt': agent_data['created_at'].isoformat() if agent_data['created_at'] else None
                 })
             
