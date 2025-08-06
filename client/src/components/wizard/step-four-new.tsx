@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Play, CheckCircle, AlertTriangle, Clock, Database, FileText, Bug, TestTube, Wrench, Bot, RefreshCw, Save } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Button } from "../ui/button";
@@ -80,6 +80,7 @@ export default function StepFour({ applicationId, onNext, setCanProceed }: StepF
   const [overallProgress, setOverallProgress] = useState(0);
 
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   // Get application data
   const { data: applicationData } = useQuery({
@@ -156,6 +157,8 @@ export default function StepFour({ applicationId, onNext, setCanProceed }: StepF
       return response.json();
     },
     onSuccess: () => {
+      // Invalidate the answers cache so Step 5 shows updated data
+      queryClient.invalidateQueries({ queryKey: [`/api/questions/answers/${applicationId}`] });
       toast({
         title: "Results Saved",
         description: "Data collection results have been saved to the database",
@@ -183,6 +186,8 @@ export default function StepFour({ applicationId, onNext, setCanProceed }: StepF
 
     try {
       await Promise.all(savePromises);
+      // Invalidate the answers cache so Step 5 shows updated data immediately
+      queryClient.invalidateQueries({ queryKey: [`/api/questions/answers/${applicationId}`] });
       toast({
         title: "All Results Saved",
         description: `Successfully saved ${completedExecutions.length} results to the database`,
