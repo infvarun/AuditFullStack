@@ -452,7 +452,7 @@ export default function StepFive({ applicationId, setCanProceed }: StepFiveProps
                 size="sm" 
                 variant="outline"
                 onClick={() => {
-                  window.open(`http://localhost:8000/api/applications/${applicationId}/download-execution-results`, '_blank');
+                  window.open(`/api/applications/${applicationId}/download-execution-results`, '_blank');
                 }}
               >
                 <Download className="h-4 w-4 mr-2" />
