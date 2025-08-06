@@ -405,6 +405,7 @@ class DataConnectorFactory:
             'sql_server': SQLServerConnector,
             'oracle': OracleConnector,
             'servicenow': ServiceNowConnector,
+            'service_now': ServiceNowConnector,  # Support both formats
             'jira': JiraConnector,
             'qtest': QTestConnector,
             'gnosis': GnosisConnector
@@ -424,7 +425,7 @@ class DataConnectorFactory:
             # Route to appropriate method based on tool type
             if tool_type.lower() in ['sql_server', 'oracle']:
                 return connector.execute_query(question, kwargs.get('table_hints'))
-            elif tool_type.lower() == 'servicenow':
+            elif tool_type.lower() in ['servicenow', 'service_now']:
                 return connector.get_change_requests(question)
             elif tool_type.lower() == 'jira':
                 return connector.get_tickets(question)

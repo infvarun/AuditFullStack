@@ -642,41 +642,64 @@ export default function StepFour({ applicationId, onNext, setCanProceed }: StepF
                           <div className="text-sm text-green-700 mb-2">
                             {(() => {
                               try {
-                                // Try to parse JSON and extract executiveSummary
-                                const jsonData = typeof execution.result.data === 'string' ? JSON.parse(execution.result.data) : execution.result.data;
+                                // Try to parse JSON and extract structured content
+                                let jsonData = execution.result.data;
+                                if (typeof jsonData === 'string') {
+                                  jsonData = JSON.parse(jsonData);
+                                }
+
+                                // Handle nested analysis structure
+                                const analysis = jsonData.analysis || jsonData;
+                                
                                 return (
                                   <div className="space-y-2">
-                                    {jsonData.executiveSummary && (
+                                    {analysis.executiveSummary && (
                                       <div>
                                         <span className="font-medium">Executive Summary:</span>
-                                        <p className="mt-1 text-green-600">{jsonData.executiveSummary}</p>
+                                        <p className="mt-1 text-green-600">{analysis.executiveSummary}</p>
                                       </div>
                                     )}
-                                    {jsonData.findings && jsonData.findings.length > 0 && (
+                                    {analysis.findings && analysis.findings.length > 0 && (
                                       <div>
                                         <span className="font-medium">Key Findings:</span>
                                         <ul className="mt-1 text-green-600 list-disc list-inside">
-                                          {jsonData.findings.slice(0, 3).map((finding: string, idx: number) => (
+                                          {analysis.findings.slice(0, 3).map((finding: string, idx: number) => (
                                             <li key={idx}>{finding}</li>
                                           ))}
                                         </ul>
                                       </div>
                                     )}
-                                    {jsonData.recommendations && jsonData.recommendations.length > 0 && (
+                                    {analysis.recommendations && analysis.recommendations.length > 0 && (
                                       <div>
                                         <span className="font-medium">Recommendations:</span>
                                         <ul className="mt-1 text-green-600 list-disc list-inside">
-                                          {jsonData.recommendations.slice(0, 2).map((rec: string, idx: number) => (
+                                          {analysis.recommendations.slice(0, 2).map((rec: string, idx: number) => (
                                             <li key={idx}>{rec}</li>
                                           ))}
                                         </ul>
+                                      </div>
+                                    )}
+                                    {/* Show a clean summary if no structured content */}
+                                    {!analysis.executiveSummary && !analysis.findings && !analysis.recommendations && (
+                                      <div>
+                                        <span className="font-medium">Analysis Summary:</span>
+                                        <p className="mt-1 text-green-600">
+                                          {typeof jsonData === 'string' ? jsonData : 
+                                           analysis.summary || 
+                                           JSON.stringify(jsonData).substring(0, 200) + '...'}
+                                        </p>
                                       </div>
                                     )}
                                   </div>
                                 );
                               } catch (e) {
                                 // Fallback to displaying the raw data if parsing fails
-                                return <p>{execution.result.data}</p>;
+                                return (
+                                  <div>
+                                    <span className="font-medium">Raw Result:</span>
+                                    <p className="mt-1 text-green-600">{String(execution.result.data).substring(0, 300)}...</p>
+                                  </div>
+                                );
                               }
                             })()}
                           </div>
