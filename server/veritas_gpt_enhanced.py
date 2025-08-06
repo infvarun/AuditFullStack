@@ -279,10 +279,22 @@ Analyze relevance:"""
                 HumanMessagePromptTemplate.from_template(human_prompt)
             ])
             
-            formatted_prompt = prompt.format_messages(query=query, tool_data=json.dumps(tool_data, indent=2))
+            # Simplify tool_data to avoid JSON issues
+            simple_tool_data = {
+                "tool": tool_data.get("tool", ""),
+                "description": tool_data.get("description", ""),
+                "file_count": len(tool_data.get("files", [])),
+                "file_names": [f.get("name", "") for f in tool_data.get("files", [])]
+            }
+            
+            formatted_prompt = prompt.format_messages(query=query, tool_data=json.dumps(simple_tool_data, indent=2))
             response = self.llm.invoke(formatted_prompt)
             
-            return json.loads(response.content)
+            try:
+                return json.loads(response.content)
+            except json.JSONDecodeError:
+                # Fallback if JSON parsing fails
+                return {"relevant": False, "score": 0, "relevant_files": [], "summary": "JSON parsing failed"}
             
         except Exception as e:
             print(f"Error analyzing tool data relevance: {e}")
@@ -352,8 +364,35 @@ CONVERSATION HISTORY:
 {json.dumps(conversation_history[-5:] if conversation_history else [], indent=2)}"""
 
         try:
+            # Clean up context sections to avoid JSON issues
+            clean_context = []
+            for section in context_sections:
+                if isinstance(section, str):
+                    # Remove any problematic characters and escape quotes
+                    clean_section = section.replace('"', "'").replace('\n', ' ').replace('\r', ' ')
+                    clean_context.append(clean_section)
+            
+            # Create a cleaner system prompt
+            clean_system_prompt = f"""You are Veritas GPT, an expert audit analyst with access to comprehensive audit data for CI {ci_id}.
+
+AVAILABLE TOOLS AND DATA:
+{chr(10).join([f"- {tool['tool']}: {tool['description']}" for tool in available_tools])}
+
+RELEVANT CONTEXT FOR THIS QUERY:
+{chr(10).join(clean_context)}
+
+INSTRUCTIONS:
+1. Provide accurate, data-driven responses based on the available tool data
+2. Reference specific data points and findings when relevant
+3. If you need more specific data, suggest which tools to examine
+4. Be comprehensive but concise
+5. Highlight any potential audit concerns or compliance issues
+6. Use professional audit terminology
+
+Please analyze the context and provide a comprehensive response to the user's question."""
+
             prompt = ChatPromptTemplate.from_messages([
-                SystemMessagePromptTemplate.from_template(system_prompt),
+                SystemMessagePromptTemplate.from_template(clean_system_prompt),
                 HumanMessagePromptTemplate.from_template("{user_message}")
             ])
             
@@ -369,10 +408,32 @@ CONVERSATION HISTORY:
             }
             
         except Exception as e:
+            print(f"Error in LLM analysis: {e}")
+            # Provide a fallback response with available data
+            fallback_response = f"""I have access to data from {len(available_tools)} tools: {', '.join([tool['tool'] for tool in available_tools])}.
+
+Based on the available data, I can see:
+"""
+            
+            # Add basic info from each tool
+            for tool in available_tools[:3]:
+                tool_summary = self.get_tool_data_summary(ci_id, tool["tool"])
+                if "files" in tool_summary:
+                    fallback_response += f"\n**{tool['tool'].upper()}**: {len(tool_summary['files'])} files available"
+                    for file_info in tool_summary["files"][:2]:
+                        if "columns" in file_info:
+                            fallback_response += f"\n- {file_info['name']}: {len(file_info['columns'])} columns, {file_info.get('rows', 0)} rows"
+                        elif "preview" in file_info:
+                            fallback_response += f"\n- {file_info['name']}: Document with {file_info.get('lines', 0)} lines"
+            
+            fallback_response += f"\n\nPlease rephrase your question and I'll provide a more detailed analysis. Error details: {str(e)[:100]}"
+            
             return {
-                "response": f"I encountered an error while analyzing the data: {str(e)}. However, I have access to data from these tools: {', '.join([tool['tool'] for tool in available_tools])}. Please try rephrasing your question.",
-                "tools_used": [],
-                "thinking_steps": thinking_steps + ["Error occurred during analysis"],
+                "response": fallback_response,
+                "tools_used": [tool["tool"] for tool in available_tools],
+                "thinking_steps": thinking_steps + ["Error occurred, providing fallback response"],
+                "context_summary": f"Error occurred, but data available from {len(available_tools)} tools",
+                "available_tools": [tool["tool"] for tool in available_tools],
                 "error": str(e)
             }
 

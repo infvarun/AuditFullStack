@@ -40,7 +40,7 @@ The Stark G4 audit system follows a multi-tier architecture with the following c
 - Data processing: Handle up to 1M audit records
 
 7. DISASTER RECOVERY
-- RTO (Recovery Time Objective): 4 hours
-- RPO (Recovery Point Objective): 1 hour
-- Backup sites in multiple geographic locations
-- Automated failover procedures
+- RTO (Recovery Time Objective): 10 minutes
+- RPO (Recovery Point Objective): 10 minutes
+- Backup sites in 2 geographic locations
+- Automated failover procedures - Active/Active DR
