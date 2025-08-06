@@ -639,7 +639,47 @@ export default function StepFour({ applicationId, onNext, setCanProceed }: StepF
                               )}
                             </Button>
                           </div>
-                          <p className="text-sm text-green-700 mb-2">{execution.result.data}</p>
+                          <div className="text-sm text-green-700 mb-2">
+                            {(() => {
+                              try {
+                                // Try to parse JSON and extract executiveSummary
+                                const jsonData = typeof execution.result.data === 'string' ? JSON.parse(execution.result.data) : execution.result.data;
+                                return (
+                                  <div className="space-y-2">
+                                    {jsonData.executiveSummary && (
+                                      <div>
+                                        <span className="font-medium">Executive Summary:</span>
+                                        <p className="mt-1 text-green-600">{jsonData.executiveSummary}</p>
+                                      </div>
+                                    )}
+                                    {jsonData.findings && jsonData.findings.length > 0 && (
+                                      <div>
+                                        <span className="font-medium">Key Findings:</span>
+                                        <ul className="mt-1 text-green-600 list-disc list-inside">
+                                          {jsonData.findings.slice(0, 3).map((finding: string, idx: number) => (
+                                            <li key={idx}>{finding}</li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                    )}
+                                    {jsonData.recommendations && jsonData.recommendations.length > 0 && (
+                                      <div>
+                                        <span className="font-medium">Recommendations:</span>
+                                        <ul className="mt-1 text-green-600 list-disc list-inside">
+                                          {jsonData.recommendations.slice(0, 2).map((rec: string, idx: number) => (
+                                            <li key={idx}>{rec}</li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              } catch (e) {
+                                // Fallback to displaying the raw data if parsing fails
+                                return <p>{execution.result.data}</p>;
+                              }
+                            })()}
+                          </div>
                           <div className="grid grid-cols-2 gap-4 text-xs text-green-600">
                             <div>
                               <span className="font-medium">Records:</span> {execution.result.records}
