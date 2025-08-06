@@ -310,7 +310,6 @@ export default function StepFour({ applicationId, onNext, setCanProceed }: StepF
         }, 600);
 
         // Call actual mock agent executor API
-        
         const response = await executeAgentMutation.mutateAsync({
           questionId: analysis.id,
           prompt: analysis.prompt || analysis.originalQuestion || '',
@@ -643,79 +642,54 @@ export default function StepFour({ applicationId, onNext, setCanProceed }: StepF
                             {(() => {
                               const data = execution.result.data;
                               
-                              // Super simple approach - always show something
+                              // Debug: Log the complete data to console
+                              console.log("=== EXECUTION RESULT DATA DEBUG ===");
+                              console.log("Data type:", typeof data);
+                              console.log("Data length:", typeof data === 'string' ? data.length : 'Not a string');
+                              console.log("Full data:", data);
+                              console.log("=== END DEBUG ===");
+                              
+                              // Always show the complete content for now
                               if (!data) {
-                                return <p className="text-green-600">Analysis completed successfully.</p>;
+                                return <p className="text-green-600">No data available.</p>;
                               }
 
-                              // If it's a string and looks like JSON, try to parse it
-                              if (typeof data === 'string') {
-                                if (data.trim().startsWith('{')) {
-                                  try {
-                                    const parsed = JSON.parse(data);
-                                    if (parsed.executiveSummary) {
-                                      return (
-                                        <div className="space-y-2">
+                              // Show complete content as JSON for debugging
+                              return (
+                                <div className="space-y-2">
+                                  <div>
+                                    <strong>Complete JSON Response:</strong>
+                                    <pre className="mt-1 text-green-600 text-xs whitespace-pre-wrap bg-green-50 p-2 rounded border overflow-auto max-h-40">
+                                      {typeof data === 'string' ? data : JSON.stringify(data, null, 2)}
+                                    </pre>
+                                  </div>
+                                  {/* Try to extract executiveSummary if possible */}
+                                  {(() => {
+                                    try {
+                                      let parsed = data;
+                                      if (typeof data === 'string') {
+                                        parsed = JSON.parse(data);
+                                      }
+                                      if (parsed.executiveSummary) {
+                                        return (
                                           <div>
-                                            <strong>Executive Summary:</strong>
-                                            <p className="mt-1">{parsed.executiveSummary}</p>
+                                            <strong>Executive Summary (Extracted):</strong>
+                                            <p className="mt-1 text-green-600 leading-relaxed">{parsed.executiveSummary}</p>
                                           </div>
-                                          {parsed.findings && Array.isArray(parsed.findings) && (
-                                            <div>
-                                              <strong>Key Findings:</strong>
-                                              <ul className="mt-1 ml-4 list-disc">
-                                                {parsed.findings.slice(0, 3).map((finding: any, idx: number) => (
-                                                  <li key={idx}>{String(finding)}</li>
-                                                ))}
-                                              </ul>
-                                            </div>
-                                          )}
+                                        );
+                                      }
+                                    } catch (e) {
+                                      return (
+                                        <div>
+                                          <strong>Parse Error:</strong>
+                                          <p className="mt-1 text-red-600">Could not parse JSON: {e.message}</p>
                                         </div>
                                       );
                                     }
-                                  } catch (e) {
-                                    // JSON parsing failed, show as text
-                                  }
-                                }
-                                // Extract executiveSummary from JSON string
-                                if (data.includes('executiveSummary')) {
-                                  const match = data.match(/"executiveSummary":\s*"([^"]+)"/);
-                                  if (match) {
-                                    return <p className="text-green-600 leading-relaxed">{match[1]}</p>;
-                                  }
-                                }
-                                // Show string as is if no executiveSummary found
-                                return <p className="text-green-600 whitespace-pre-wrap">{data}</p>;
-                              }
-
-                              // If it's an object, try to extract useful info
-                              if (typeof data === 'object') {
-                                if (data.executiveSummary) {
-                                  return (
-                                    <div className="space-y-2">
-                                      <div>
-                                        <strong>Executive Summary:</strong>
-                                        <p className="mt-1">{data.executiveSummary}</p>
-                                      </div>
-                                      {data.findings && Array.isArray(data.findings) && (
-                                        <div>
-                                          <strong>Key Findings:</strong>
-                                          <ul className="mt-1 ml-4 list-disc">
-                                            {data.findings.slice(0, 3).map((finding: any, idx: number) => (
-                                              <li key={idx}>{String(finding)}</li>
-                                            ))}
-                                          </ul>
-                                        </div>
-                                      )}
-                                    </div>
-                                  );
-                                }
-                                // Show object as formatted JSON
-                                return <pre className="text-green-600 text-xs whitespace-pre-wrap">{JSON.stringify(data, null, 2)}</pre>;
-                              }
-
-                              // Fallback - show whatever it is
-                              return <p className="text-green-600">{String(data)}</p>;
+                                    return null;
+                                  })()}
+                                </div>
+                              );
                             })()}
                           </div>
                           <div className="grid grid-cols-2 gap-4 text-xs text-green-600">

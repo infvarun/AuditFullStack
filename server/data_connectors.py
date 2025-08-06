@@ -92,7 +92,7 @@ Return your analysis as a JSON object with the following structure:
 Audit Question: {question}
 
 Data to Analyze:
-{str(data)[:3000]}...
+{str(data)[:5000]}
 
 Please analyze this data and provide your assessment."""
 
@@ -104,6 +104,10 @@ Please analyze this data and provide your assessment."""
             # Try to parse JSON response
             try:
                 analysis = json.loads(response.content)
+                print(f"=== LLM ANALYSIS RESULT ===")
+                print(f"Type: {type(analysis)}")
+                print(f"Content: {json.dumps(analysis, indent=2)}")
+                print(f"=== END LLM ANALYSIS ===")
                 return analysis
             except json.JSONDecodeError:
                 # Fallback if JSON parsing fails
