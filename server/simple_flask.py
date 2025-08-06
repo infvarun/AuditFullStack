@@ -1714,43 +1714,88 @@ def get_question_answers(application_id):
 
         cursor = conn.cursor(cursor_factory=RealDictCursor)
 
+        # First get data from agent_executions (Step 4 execution results)
         cursor.execute(
             """
-            SELECT ae.question_id, ae.result, ae.tool_used, ae.confidence, ae.risk_level, ae.compliance_status, 
-                   ae.data_collected, ae.execution_time, ae.findings, ae.created_at,
-                   qa.answer, qa.findings as qa_findings, qa.data_points as qa_data_points, qa.execution_details
-            FROM agent_executions ae
-            LEFT JOIN question_answers qa ON ae.application_id = qa.application_id AND ae.question_id = qa.question_id
-            WHERE ae.application_id = %s
-            ORDER BY ae.created_at DESC
+            SELECT question_id, result, tool_used, confidence, risk_level, compliance_status, 
+                   data_collected, execution_time, findings, created_at
+            FROM agent_executions 
+            WHERE application_id = %s
+        """, (application_id, ))
+        
+        agent_results = {row['question_id']: row for row in cursor.fetchall()}
+        
+        # Then get data from question_answers (Step 5 saved answers)
+        cursor.execute(
+            """
+            SELECT question_id, answer, findings, risk_level, compliance_status, 
+                   data_points, execution_details, created_at, updated_at
+            FROM question_answers 
+            WHERE application_id = %s
         """, (application_id, ))
 
+        answer_results = {row['question_id']: row for row in cursor.fetchall()}
+        
+        # Combine both data sources, prioritizing saved answers over agent executions
         answers = []
-        for row in cursor.fetchall():
-            # Parse the result JSON to get detailed execution data
+        all_question_ids = set(agent_results.keys()) | set(answer_results.keys())
+        
+        for question_id in all_question_ids:
+            agent_data = agent_results.get(question_id)
+            answer_data = answer_results.get(question_id)
+            
+            # Parse agent result JSON if available
             result_data = {}
-            if row['result']:
+            if agent_data and agent_data['result']:
                 try:
-                    result_data = json.loads(row['result']) if isinstance(row['result'], str) else row['result']
+                    result_data = json.loads(agent_data['result']) if isinstance(agent_data['result'], str) else agent_data['result']
                 except:
                     result_data = {}
             
-            answers.append({
-                'questionId': row['question_id'],
-                'answer': row['answer'] or result_data.get('analysis', {}).get('executiveSummary', ''),
-                'findings': row['qa_findings'] or row['findings'] or result_data.get('findings', []),
-                'riskLevel': row['risk_level'] or result_data.get('riskLevel', 'Low'),
-                'complianceStatus': row['compliance_status'] or result_data.get('complianceStatus', 'Compliant'),
-                'dataPoints': row['qa_data_points'] or row['data_collected'] or result_data.get('dataPoints', 0),
-                'executionDetails': row['execution_details'] or {
-                    'duration': row['execution_time'],
-                    'toolUsed': row['tool_used'] or result_data.get('toolsUsed', ['Unknown'])[0] if result_data.get('toolsUsed') else 'Unknown'
-                },
-                'confidence': row['confidence'] or result_data.get('analysis', {}).get('confidence', 0),
-                'toolUsed': row['tool_used'] or (result_data.get('toolsUsed', ['Unknown'])[0] if result_data.get('toolsUsed') else 'Unknown'),
-                'executionResult': result_data,  # Include full result for detailed access
-                'createdAt': row['created_at'].isoformat() if row['created_at'] else None
-            })
+            # Combine data with preference for manually saved answers
+            combined_answer = {
+                'questionId': question_id,
+                'answer': '',
+                'findings': [],
+                'riskLevel': 'Low',
+                'complianceStatus': 'Compliant',
+                'dataPoints': 0,
+                'executionDetails': {},
+                'confidence': 0,
+                'toolUsed': 'Unknown',
+                'createdAt': None
+            }
+            
+            # Fill from agent execution data first
+            if agent_data:
+                combined_answer.update({
+                    'answer': result_data.get('analysis', {}).get('executiveSummary', ''),
+                    'findings': result_data.get('findings', []),
+                    'riskLevel': agent_data['risk_level'] or result_data.get('riskLevel', 'Low'),
+                    'complianceStatus': agent_data['compliance_status'] or result_data.get('complianceStatus', 'Compliant'),
+                    'dataPoints': agent_data['data_collected'] or result_data.get('dataPoints', 0),
+                    'confidence': agent_data['confidence'] or result_data.get('analysis', {}).get('confidence', 0),
+                    'toolUsed': (result_data.get('toolsUsed', ['Unknown'])[0] if result_data.get('toolsUsed') else 'Unknown'),
+                    'executionDetails': {
+                        'duration': agent_data['execution_time'],
+                        'toolUsed': (result_data.get('toolsUsed', ['Unknown'])[0] if result_data.get('toolsUsed') else 'Unknown')
+                    },
+                    'createdAt': agent_data['created_at'].isoformat() if agent_data['created_at'] else None
+                })
+            
+            # Override with manually saved answer data if available
+            if answer_data:
+                combined_answer.update({
+                    'answer': answer_data['answer'] or combined_answer['answer'],
+                    'findings': answer_data['findings'] or combined_answer['findings'],
+                    'riskLevel': answer_data['risk_level'] or combined_answer['riskLevel'],
+                    'complianceStatus': answer_data['compliance_status'] or combined_answer['complianceStatus'],
+                    'dataPoints': answer_data['data_points'] or combined_answer['dataPoints'],
+                    'executionDetails': answer_data['execution_details'] or combined_answer['executionDetails'],
+                    'createdAt': answer_data['updated_at'].isoformat() if answer_data['updated_at'] else combined_answer['createdAt']
+                })
+            
+            answers.append(combined_answer)
 
         return jsonify(answers), 200
 
