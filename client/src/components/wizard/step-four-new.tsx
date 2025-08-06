@@ -641,91 +641,74 @@ export default function StepFour({ applicationId, onNext, setCanProceed }: StepF
                           </div>
                           <div className="text-sm text-green-700 mb-2">
                             {(() => {
-                              // Function to render structured content
-                              const renderStructuredContent = (data: any) => {
-                                if (!data) return null;
-                                
-                                return (
-                                  <div className="space-y-3">
-                                    {data.executiveSummary && (
-                                      <div>
-                                        <div className="font-medium text-green-800">Executive Summary:</div>
-                                        <p className="mt-1 text-green-600 leading-relaxed">{data.executiveSummary}</p>
-                                      </div>
-                                    )}
-                                    {data.findings && Array.isArray(data.findings) && data.findings.length > 0 && (
-                                      <div>
-                                        <div className="font-medium text-green-800">Key Findings:</div>
-                                        <ul className="mt-1 text-green-600 space-y-1">
-                                          {data.findings.slice(0, 3).map((finding: any, idx: number) => (
-                                            <li key={idx} className="flex items-start">
-                                              <span className="text-green-500 mr-2 mt-1.5">•</span>
-                                              <span>{typeof finding === 'string' ? finding : finding.finding || String(finding)}</span>
-                                            </li>
-                                          ))}
-                                        </ul>
-                                      </div>
-                                    )}
-                                    {data.recommendations && Array.isArray(data.recommendations) && data.recommendations.length > 0 && (
-                                      <div>
-                                        <div className="font-medium text-green-800">Recommendations:</div>
-                                        <ul className="mt-1 text-green-600 space-y-1">
-                                          {data.recommendations.slice(0, 2).map((rec: any, idx: number) => (
-                                            <li key={idx} className="flex items-start">
-                                              <span className="text-green-500 mr-2 mt-1.5">•</span>
-                                              <span>{typeof rec === 'string' ? rec : rec.recommendation || String(rec)}</span>
-                                            </li>
-                                          ))}
-                                        </ul>
-                                      </div>
-                                    )}
-                                  </div>
-                                );
-                              };
+                              const data = execution.result.data;
+                              
+                              // Super simple approach - always show something
+                              if (!data) {
+                                return <p className="text-green-600">Analysis completed successfully.</p>;
+                              }
 
-                              try {
-                                let data = execution.result.data;
-                                
-                                // Handle string JSON
-                                if (typeof data === 'string' && data.trim().startsWith('{')) {
+                              // If it's a string and looks like JSON, try to parse it
+                              if (typeof data === 'string') {
+                                if (data.trim().startsWith('{')) {
                                   try {
-                                    data = JSON.parse(data);
-                                  } catch {
-                                    // If JSON parsing fails, show as text
-                                    return (
-                                      <div>
-                                        <div className="font-medium text-green-800">Analysis Result:</div>
-                                        <p className="mt-1 text-green-600 leading-relaxed">{data}</p>
-                                      </div>
-                                    );
+                                    const parsed = JSON.parse(data);
+                                    if (parsed.executiveSummary) {
+                                      return (
+                                        <div className="space-y-2">
+                                          <div>
+                                            <strong>Executive Summary:</strong>
+                                            <p className="mt-1">{parsed.executiveSummary}</p>
+                                          </div>
+                                          {parsed.findings && Array.isArray(parsed.findings) && (
+                                            <div>
+                                              <strong>Key Findings:</strong>
+                                              <ul className="mt-1 ml-4 list-disc">
+                                                {parsed.findings.slice(0, 3).map((finding: any, idx: number) => (
+                                                  <li key={idx}>{String(finding)}</li>
+                                                ))}
+                                              </ul>
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    }
+                                  } catch (e) {
+                                    // JSON parsing failed, show as text
                                   }
                                 }
-
-                                // Try different data structures
-                                const analysis = data?.analysis || data;
-                                const structuredContent = renderStructuredContent(analysis);
-                                
-                                if (structuredContent) {
-                                  return structuredContent;
-                                }
-
-                                // Fallback to formatted text
-                                return (
-                                  <div>
-                                    <div className="font-medium text-green-800">Analysis Result:</div>
-                                    <p className="mt-1 text-green-600 leading-relaxed">
-                                      {typeof data === 'string' ? data : JSON.stringify(data, null, 2)}
-                                    </p>
-                                  </div>
-                                );
-                              } catch (error) {
-                                return (
-                                  <div>
-                                    <div className="font-medium text-green-800">Analysis Result:</div>
-                                    <p className="mt-1 text-green-600">{String(execution.result.data)}</p>
-                                  </div>
-                                );
+                                // Show string as is
+                                return <p className="text-green-600 whitespace-pre-wrap">{data}</p>;
                               }
+
+                              // If it's an object, try to extract useful info
+                              if (typeof data === 'object') {
+                                if (data.executiveSummary) {
+                                  return (
+                                    <div className="space-y-2">
+                                      <div>
+                                        <strong>Executive Summary:</strong>
+                                        <p className="mt-1">{data.executiveSummary}</p>
+                                      </div>
+                                      {data.findings && Array.isArray(data.findings) && (
+                                        <div>
+                                          <strong>Key Findings:</strong>
+                                          <ul className="mt-1 ml-4 list-disc">
+                                            {data.findings.slice(0, 3).map((finding: any, idx: number) => (
+                                              <li key={idx}>{String(finding)}</li>
+                                            ))}
+                                          </ul>
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                }
+                                // Show object as formatted JSON
+                                return <pre className="text-green-600 text-xs whitespace-pre-wrap">{JSON.stringify(data, null, 2)}</pre>;
+                              }
+
+                              // Fallback - show whatever it is
+                              return <p className="text-green-600">{String(data)}</p>;
                             })()}
                           </div>
                           <div className="grid grid-cols-2 gap-4 text-xs text-green-600">
