@@ -452,7 +452,11 @@ export default function StepFive({ applicationId, setCanProceed }: StepFiveProps
                 size="sm" 
                 variant="outline"
                 onClick={() => {
-                  window.open(`/api/applications/${applicationId}/download-execution-results`, '_blank');
+                  // Use the same API routing as other API calls
+                  const API_BASE_URL = import.meta.env.VITE_API_URL || 
+                    (window.location.hostname === 'localhost' ? "http://localhost:8000" : 
+                     `${window.location.protocol}//${window.location.hostname}:8000`);
+                  window.open(`${API_BASE_URL}/api/applications/${applicationId}/download-execution-results`, '_blank');
                 }}
               >
                 <Download className="h-4 w-4 mr-2" />
