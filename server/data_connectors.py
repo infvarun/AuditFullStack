@@ -77,7 +77,7 @@ Instructions:
 5. Determine compliance status (Compliant, Non-Compliant, Partially Compliant)
 6. List specific data points that support your analysis
 
-Return your analysis as a JSON object with the following structure:
+Return ONLY a valid JSON object (no markdown formatting, no code blocks) with the following structure:
 {{
     "executiveSummary": "Detailed summary of findings",
     "findings": ["Finding 1", "Finding 2", "Finding 3"],
@@ -92,22 +92,43 @@ Return your analysis as a JSON object with the following structure:
 Audit Question: {question}
 
 Data to Analyze:
-{str(data)[:5000]}
+{str(data)}
 
-Please analyze this data and provide your assessment."""
+Please analyze this data and provide your assessment as a complete JSON object."""
 
             response = self.llm.invoke([
                 SystemMessage(content=system_prompt),
                 HumanMessage(content=user_message)
             ])
             
-            # Try to parse JSON response
+            # Clean up response content and parse JSON
             try:
-                analysis = json.loads(response.content)
-                print(f"=== LLM ANALYSIS RESULT ===")
+                content = response.content.strip()
+                print(f"=== RAW LLM RESPONSE ===")
+                print(f"Length: {len(content)}")
+                print(f"Content: {content}")
+                print(f"=== END RAW RESPONSE ===")
+                
+                # Remove markdown code block formatting if present
+                if content.startswith('```json'):
+                    content = content.replace('```json', '').replace('```', '').strip()
+                elif content.startswith('```'):
+                    content = content.replace('```', '').strip()
+                
+                # Try to fix truncated JSON by adding missing closing braces
+                if content.count('{') > content.count('}'):
+                    missing_braces = content.count('{') - content.count('}')
+                    content += '}' * missing_braces
+                    print(f"=== FIXED TRUNCATED JSON ===")
+                    print(f"Added {missing_braces} closing braces")
+                    print(f"Fixed content: {content}")
+                    print(f"=== END FIXED JSON ===")
+                
+                analysis = json.loads(content)
+                print(f"=== PARSED ANALYSIS RESULT ===")
                 print(f"Type: {type(analysis)}")
-                print(f"Content: {json.dumps(analysis, indent=2)}")
-                print(f"=== END LLM ANALYSIS ===")
+                print(f"Executive Summary: {analysis.get('executiveSummary', 'NOT FOUND')}")
+                print(f"=== END PARSED ANALYSIS ===")
                 return analysis
             except json.JSONDecodeError:
                 # Fallback if JSON parsing fails
