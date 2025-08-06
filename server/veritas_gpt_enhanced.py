@@ -35,37 +35,31 @@ class VeritasGPTAgent:
             raise ValueError("LLM instance is required. Pass the configured LangChain LLM from Flask app.")
         self.llm = llm
         
-        # Define available tools and their file mappings
+        # Define available tools - simplified approach, just folder names
         self.tool_mappings = {
             "sql_server": {
                 "folder": "SQL_Server",
-                "files": ["User_Role.xlsx", "Study.xlsx", "Access_Log.xlsx"],
-                "description": "SQL Server database with user roles, studies, and access logs"
+                "description": "SQL Server database system"
             },
             "oracle_db": {
                 "folder": "Oracle", 
-                "files": ["User_Role.xlsx", "Study.xlsx"],
-                "description": "Oracle database with user roles and study data"
+                "description": "Oracle database system"
             },
             "gnosis": {
                 "folder": "Gnosis",
-                "files": ["Support_Plan.txt", "Design_Document.txt", "Work_Instructions.txt"],
-                "description": "Gnosis document repository with support plans, design docs, and instructions"
+                "description": "Gnosis document management system"
             },
             "jira": {
                 "folder": "Jira",
-                "files": ["jira_tickets.xlsx"],
-                "description": "Jira issue tracking system with tickets and project data"
+                "description": "Jira issue tracking system"
             },
             "qtest": {
                 "folder": "QTest",
-                "files": ["test_executions.xlsx"],
-                "description": "QTest quality assurance system with test execution results"
+                "description": "QTest quality assurance system"
             },
             "service_now": {
                 "folder": "ServiceNow",
-                "files": ["change_requests.xlsx"],
-                "description": "ServiceNow ITSM platform with change requests and service data"
+                "description": "ServiceNow ITSM platform"
             }
         }
     
@@ -74,7 +68,7 @@ class VeritasGPTAgent:
         return os.path.join(self.tools_path, ci_id)
     
     def get_available_tools(self, ci_id: str) -> List[Dict[str, Any]]:
-        """Get list of available tools for a CI"""
+        """Get list of available tools for a CI by scanning all files in tool folders"""
         ci_folder = self.get_ci_folder_path(ci_id)
         available_tools = []
         
@@ -84,16 +78,21 @@ class VeritasGPTAgent:
         for tool_key, tool_info in self.tool_mappings.items():
             tool_folder = os.path.join(ci_folder, tool_info["folder"])
             if os.path.exists(tool_folder):
+                # Scan ALL files in the tool folder
                 files_found = []
-                for file_name in tool_info["files"]:
-                    file_path = os.path.join(tool_folder, file_name)
-                    if os.path.exists(file_path):
-                        file_size = os.path.getsize(file_path)
-                        files_found.append({
-                            "name": file_name,
-                            "path": file_path,
-                            "size": file_size
-                        })
+                try:
+                    for file_name in os.listdir(tool_folder):
+                        file_path = os.path.join(tool_folder, file_name)
+                        if os.path.isfile(file_path):  # Only include actual files
+                            file_size = os.path.getsize(file_path)
+                            files_found.append({
+                                "name": file_name,
+                                "path": file_path,
+                                "size": file_size
+                            })
+                except Exception as e:
+                    print(f"Error scanning tool folder {tool_folder}: {e}")
+                    continue
                 
                 if files_found:
                     available_tools.append({
@@ -123,7 +122,7 @@ class VeritasGPTAgent:
             return None
     
     def get_tool_data_summary(self, ci_id: str, tool_key: str) -> Dict[str, Any]:
-        """Get summary of data available in a specific tool"""
+        """Get summary of ALL data available in a specific tool folder"""
         tool_info = self.tool_mappings.get(tool_key)
         if not tool_info:
             return {"error": f"Unknown tool: {tool_key}"}
@@ -140,29 +139,34 @@ class VeritasGPTAgent:
             "files": []
         }
         
-        for file_name in tool_info["files"]:
-            file_path = os.path.join(tool_folder, file_name)
-            if os.path.exists(file_path):
-                file_info = {
-                    "name": file_name,
-                    "size": os.path.getsize(file_path),
-                    "modified": datetime.fromtimestamp(os.path.getmtime(file_path)).isoformat()
-                }
-                
-                # Get data preview
-                if file_name.endswith('.xlsx'):
-                    df = self.read_excel_file(file_path)
-                    if df is not None:
-                        file_info["rows"] = len(df)
-                        file_info["columns"] = list(df.columns)
-                        file_info["sample_data"] = df.head(3).to_dict('records')
-                elif file_name.endswith('.txt'):
-                    content = self.read_text_file(file_path)
-                    if content:
-                        file_info["lines"] = len(content.split('\n'))
-                        file_info["preview"] = content[:500] + "..." if len(content) > 500 else content
-                
-                summary["files"].append(file_info)
+        # Read ALL files in the tool folder
+        try:
+            for file_name in os.listdir(tool_folder):
+                file_path = os.path.join(tool_folder, file_name)
+                if os.path.isfile(file_path):
+                    file_info = {
+                        "name": file_name,
+                        "size": os.path.getsize(file_path),
+                        "modified": datetime.fromtimestamp(os.path.getmtime(file_path)).isoformat()
+                    }
+                    
+                    # Get data preview based on file type
+                    if file_name.endswith(('.xlsx', '.xls')):
+                        df = self.read_excel_file(file_path)
+                        if df is not None:
+                            file_info["rows"] = len(df)
+                            file_info["columns"] = list(df.columns)
+                            file_info["sample_data"] = df.head(3).to_dict('records')
+                    elif file_name.endswith(('.txt', '.doc', '.docx', '.md')):
+                        content = self.read_text_file(file_path)
+                        if content:
+                            file_info["lines"] = len(content.split('\n'))
+                            file_info["preview"] = content[:500] + "..." if len(content) > 500 else content
+                    
+                    summary["files"].append(file_info)
+        except Exception as e:
+            print(f"Error reading tool folder {tool_folder}: {e}")
+            return {"error": f"Error reading tool folder: {str(e)}"}
         
         return summary
     
@@ -199,15 +203,58 @@ class VeritasGPTAgent:
     def analyze_tool_data_for_query(self, tool_data: Dict[str, Any], query: str) -> Dict[str, Any]:
         """Use LLM to analyze if tool data is relevant to the query"""
         try:
-            # For SQL Server and Oracle databases, always consider them relevant for access control queries
+            # Enhanced relevance detection for different tool types
             tool_name = tool_data.get("tool", "")
-            if any(keyword in query.lower() for keyword in ["access", "user", "role", "permission", "sql", "database"]):
+            query_lower = query.lower()
+            
+            # Database tools for access/user queries
+            if any(keyword in query_lower for keyword in ["access", "user", "role", "permission", "sql", "database"]):
                 if tool_name in ["sql_server", "oracle_db"]:
                     return {
                         "relevant": True,
                         "score": 9,
                         "relevant_files": [f["name"] for f in tool_data.get("files", [])],
                         "summary": f"Tool contains database access control data relevant to query: {tool_data.get('description', '')}"
+                    }
+            
+            # Document management tools for documentation queries
+            if any(keyword in query_lower for keyword in ["document", "documentation", "docs", "gnosis", "support", "design", "instruction"]):
+                if tool_name == "gnosis":
+                    return {
+                        "relevant": True,
+                        "score": 8,
+                        "relevant_files": [f["name"] for f in tool_data.get("files", [])],
+                        "summary": f"Tool contains documentation and support materials relevant to query: {tool_data.get('description', '')}"
+                    }
+            
+            # Issue tracking tools for tickets/issues queries
+            if any(keyword in query_lower for keyword in ["ticket", "issue", "bug", "jira", "tracking"]):
+                if tool_name == "jira":
+                    return {
+                        "relevant": True,
+                        "score": 8,
+                        "relevant_files": [f["name"] for f in tool_data.get("files", [])],
+                        "summary": f"Tool contains issue tracking data relevant to query: {tool_data.get('description', '')}"
+                    }
+            
+            # Testing tools for test queries
+            if any(keyword in query_lower for keyword in ["test", "testing", "qa", "qtest", "quality"]):
+                if tool_name == "qtest":
+                    return {
+                        "relevant": True,
+                        "score": 8,
+                        "relevant_files": [f["name"] for f in tool_data.get("files", [])],
+                        "summary": f"Tool contains quality assurance and testing data relevant to query: {tool_data.get('description', '')}"
+                    }
+            
+            # Service management tools for change/service queries
+            if any(keyword in query_lower for keyword in ["change", "service", "servicenow", "itsm", "request"]):
+                if tool_name == "service_now":
+                    return {
+                        "relevant": True,
+                        "score": 8,
+                        "relevant_files": [f["name"] for f in tool_data.get("files", [])],
+                        "summary": f"Tool contains service management data relevant to query: {tool_data.get('description', '')}"
                     }
             
             # For other queries, use LLM analysis
