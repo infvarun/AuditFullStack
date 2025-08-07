@@ -2968,9 +2968,13 @@ def veritas_gpt_chat():
             conversation_id=conversation_id
         )
         
-        # Generate conversation ID if not provided
-        if not conversation_id:
-            conversation_id = f"conv_{ci_id}_{int(datetime.now().timestamp())}"
+        # Ensure consistent conversation ID
+        final_conversation_id = conversation_id
+        if not final_conversation_id:
+            final_conversation_id = agent_response.get('conversation_id', f"conv_{ci_id}_{int(datetime.now().timestamp())}")
+        
+        print(f"DEBUG: Final conversation_id: {final_conversation_id}")
+        print(f"DEBUG: History length: {len(conversation_history)}")
         
         # Store conversation in database
         try:

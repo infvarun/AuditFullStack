@@ -104,7 +104,23 @@ class VeritasGPTLangGraphAgent:
     def _analyze_tool_relevance(self, state: VeritasState) -> VeritasState:
         """Analyze which tools are relevant to the user's query"""
         try:
-            search_results = self.base_agent.search_tool_data(state["ci_id"], state["user_message"])
+            # Include conversation context in search
+            search_query = state["user_message"]
+            
+            # Add context from previous conversation if available
+            if state.get("messages") and len(state["messages"]) > 1:
+                conversation_context = ""
+                for msg in state["messages"][-4:]:  # Last 2 exchanges
+                    if hasattr(msg, 'content'):
+                        conversation_context += f" {msg.content}"
+                
+                # Enhance search query with conversation context
+                if "run id" in conversation_context.lower() or "runid" in conversation_context.lower():
+                    search_query += " run id test execution qtest"
+                if "jira" in conversation_context.lower():
+                    search_query += " jira stories issues"
+            
+            search_results = self.base_agent.search_tool_data(state["ci_id"], search_query)
             relevant_tools = search_results.get("results", [])
             
             thinking_steps = state.get("thinking_steps", [])
@@ -202,27 +218,44 @@ class VeritasGPTLangGraphAgent:
                 elif isinstance(msg, AIMessage):
                     conversation_history.append({"role": "assistant", "content": msg.content})
             
+            # Format conversation context with key data points
+            conv_context = ""
+            if conversation_history and len(conversation_history) > 0:
+                conv_context = "PREVIOUS CONVERSATION CONTEXT WITH DATA:\n"
+                for i, msg in enumerate(conversation_history[-6:]):  # Last 3 exchanges
+                    if msg["role"] == "user":
+                        conv_context += f"User: {msg['content']}\n"
+                    elif msg["role"] == "assistant":
+                        # Include full data context from assistant responses
+                        content = msg['content']
+                        # For data-rich responses, include more content
+                        if any(keyword in content for keyword in ["Run ID", "RunID", "Tester", "Status", "Failed"]):
+                            # Include substantial amount of data context
+                            conv_context += f"Assistant: {content[:800]}...\n"
+                        else:
+                            conv_context += f"Assistant: {content[:300]}...\n"
+                
+                conv_context += "\nCRITICAL: When answering follow-up questions, refer to the specific data, Run IDs, testers, and statuses mentioned above. Don't ask for new data queries if the information is already available in this context.\n\n"
+
             # Create comprehensive system prompt
             system_prompt = f"""You are Veritas GPT, an expert audit analyst with access to comprehensive audit data for CI {state["ci_id"]}.
 
-AVAILABLE TOOLS AND DATA:
+{conv_context}AVAILABLE TOOLS AND DATA:
 {chr(10).join([f"- {tool['tool']}: {tool['description']}" for tool in state["available_tools"]])}
 
 RELEVANT CONTEXT FOR THIS QUERY:
 {chr(10).join(context_sections)}
 
 INSTRUCTIONS:
-1. Provide accurate, data-driven responses based on the available tool data
-2. Reference specific data points and findings when relevant
-3. If you need more specific data, suggest which tools to examine
-4. Be comprehensive but concise
-5. Highlight any potential audit concerns or compliance issues
-6. Use professional audit terminology
+1. CRITICAL: If previous conversation context contains specific data (Run IDs, testers, statuses), use that exact information
+2. Don't request new data searches if the information is already available in the conversation context
+3. Reference specific data points from previous responses when answering follow-up questions
+4. Provide accurate, data-driven responses based on available tool data and conversation history
+5. Be comprehensive but concise
+6. Highlight any potential audit concerns or compliance issues
+7. Use professional audit terminology
 
-CONVERSATION HISTORY:
-{json.dumps(conversation_history[-5:], indent=2)}
-
-Please analyze the context and provide a comprehensive response to the user's question."""
+Please analyze the context and conversation history to provide a comprehensive response. If the user is asking about data that was previously provided, reference that specific information directly."""
 
             # Clean up context to avoid issues
             clean_system_prompt = system_prompt.replace('"', "'").replace('\n', ' ').replace('\r', ' ')
@@ -276,17 +309,31 @@ Please rephrase your question and I'll provide a detailed analysis. Error: {str(
     def generate_context_aware_response(self, ci_id: str, user_message: str, conversation_history: List[Dict] = None, conversation_id: str = None) -> Dict[str, Any]:
         """Generate a context-aware response using LangGraph workflow"""
         
-        # Convert conversation history to messages
+        # Convert conversation history to messages and include current user message
         messages = []
         if conversation_history:
-            for msg in conversation_history[-10:]:  # Last 10 messages
+            for msg in conversation_history[-10:]:  # Last 10 messages for context
                 if msg["role"] == "user":
                     messages.append(HumanMessage(content=msg["content"]))
                 elif msg["role"] == "assistant":
                     messages.append(AIMessage(content=msg["content"]))
         
+        # Add current user message
+        messages.append(HumanMessage(content=user_message))
+        
         # Generate conversation ID if not provided
         final_conversation_id = conversation_id or f"conv_{ci_id}_{int(datetime.now().timestamp())}"
+        
+        # Build context summary from conversation history
+        context_summary = ""
+        if conversation_history and len(conversation_history) > 0:
+            recent_context = []
+            for msg in conversation_history[-6:]:  # Last 3 exchanges for context
+                if msg["role"] == "user":
+                    recent_context.append(f"Previous question: {msg['content'][:100]}...")
+                elif msg["role"] == "assistant":
+                    recent_context.append(f"Previous answer: {msg['content'][:100]}...")
+            context_summary = "\n".join(recent_context)
         
         # Create initial state
         initial_state = VeritasState(
@@ -299,14 +346,18 @@ Please rephrase your question and I'll provide a detailed analysis. Error: {str(
             available_tools=[],
             relevant_tools=[],
             tool_data={},
-            context_summary="",
+            context_summary=context_summary,
             thinking_steps=[],
             tools_used=[],
             final_response=""
         )
         
-        # Configure thread for conversation persistence
+        # Configure thread for conversation persistence with LangGraph
         config = {"configurable": {"thread_id": final_conversation_id}}
+        
+        print(f"DEBUG: Using conversation_id: {final_conversation_id}")
+        print(f"DEBUG: Conversation history length: {len(conversation_history) if conversation_history else 0}")
+        print(f"DEBUG: Messages length: {len(messages)}")
         
         try:
             # Execute the LangGraph workflow
