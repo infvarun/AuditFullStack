@@ -1471,7 +1471,7 @@ def execute_folder_based_agents():
                 execution_result = {
                     'questionId': question_analysis['questionId'],
                     'originalQuestion': question_analysis['originalQuestion'],
-                    'toolsUsed': tool_suggestion,
+                    'toolsUsed': [mapped_tool],  # Use the mapped tool name (e.g., "ServiceNow" instead of "service_now")
                     'duration': duration,
                     'status': 'completed',
                     'executedAt': datetime.now().isoformat(),
@@ -1502,10 +1502,11 @@ def execute_folder_based_agents():
             except Exception as e:
                 print(f"Error executing question {question_analysis['questionId']}: {e}")
                 # Create a simple fallback result
+                fallback_mapped_tool = tool_mapping.get(tool_suggestion[0] if 'tool_suggestion' in locals() and tool_suggestion else 'sql_server', 'SQL_Server')
                 fallback_result = {
                     'questionId': question_analysis['questionId'],
                     'originalQuestion': question_analysis['originalQuestion'],
-                    'toolsUsed': tool_suggestion if 'tool_suggestion' in locals() else ['sql_server'],
+                    'toolsUsed': [fallback_mapped_tool],  # Use mapped tool name
                     'duration': 1.0,
                     'status': 'completed_with_issues',
                     'executedAt': datetime.now().isoformat(),
