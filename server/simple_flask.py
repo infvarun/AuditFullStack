@@ -1463,21 +1463,23 @@ def execute_folder_based_agents():
                     'folderBased': True
                 }
 
-                # Store execution result in database (using existing table structure)
-                cursor.execute(
-                    """
-                    INSERT INTO agent_executions 
-                    (application_id, question_id, result)
-                    VALUES (%s, %s, %s)
-                    ON CONFLICT (application_id, question_id) 
-                    DO UPDATE SET
-                        result = EXCLUDED.result
-                    RETURNING id
-                """, (application_id, execution_result['questionId'],
-                      json.dumps(execution_result)))
-
-                execution_id = cursor.fetchone()['id']
-                execution_result['databaseId'] = execution_id
+                # Store execution result in database (simple insert without conflict handling)
+                try:
+                    cursor.execute(
+                        """
+                        INSERT INTO agent_executions 
+                        (application_id, question_id, result)
+                        VALUES (%s, %s, %s)
+                        RETURNING id
+                    """, (application_id, execution_result['questionId'],
+                          json.dumps(execution_result)))
+                    
+                    execution_id = cursor.fetchone()['id']
+                    execution_result['databaseId'] = execution_id
+                except Exception as db_error:
+                    # Database insert failed, but execution succeeded
+                    execution_result['databaseId'] = None
+                    execution_result['dbError'] = str(db_error)
 
                 execution_results.append(execution_result)
 
