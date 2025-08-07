@@ -259,12 +259,16 @@ INSTRUCTIONS:
 
 Please analyze the context and conversation history to provide a comprehensive response. If you made a previous request and the user confirmed it, proceed with that specific action immediately."""
 
-            # Clean up context to avoid issues
-            clean_system_prompt = system_prompt.replace('"', "'").replace('\n', ' ').replace('\r', ' ')
+            # Limit system prompt length to avoid token limits while preserving structure
+            if len(system_prompt) > 8000:
+                # Truncate context but preserve structure
+                lines = system_prompt.split('\n')
+                truncated_lines = lines[:50] + ["... (context truncated for length) ..."] + lines[-20:]
+                system_prompt = '\n'.join(truncated_lines)
             
-            # Generate response using LLM
+            # Generate response using LLM with proper formatting
             prompt = ChatPromptTemplate.from_messages([
-                SystemMessagePromptTemplate.from_template(clean_system_prompt),
+                SystemMessagePromptTemplate.from_template(system_prompt),
                 HumanMessagePromptTemplate.from_template("{user_message}")
             ])
             
@@ -288,8 +292,21 @@ Please analyze the context and conversation history to provide a comprehensive r
             
         except Exception as e:
             print(f"Error generating response: {e}")
-            # Fallback response
-            fallback_response = f"""I have access to data from {len(state.get('available_tools', []))} tools but encountered an error during analysis.
+            import traceback
+            print(f"Full error traceback: {traceback.format_exc()}")
+            
+            # Enhanced fallback for multi-tool scenarios
+            tools_used = state.get("tools_used", [])
+            if len(tools_used) > 1:
+                fallback_response = f"""Multi-tool analysis encountered an error while processing data from {len(tools_used)} tools: {', '.join(tools_used)}.
+
+I have access to:
+- Tools: {', '.join([tool['tool'] for tool in state.get('available_tools', [])])}
+- Context: {state.get('context_summary', 'Multi-tool data available')}
+
+Please try rephrasing your question or ask about specific aspects of the data. Error details: {str(e)[:150]}"""
+            else:
+                fallback_response = f"""I have access to data from {len(state.get('available_tools', []))} tools but encountered an error during analysis.
 
 Available tools: {', '.join([tool['tool'] for tool in state.get('available_tools', [])])}
 
