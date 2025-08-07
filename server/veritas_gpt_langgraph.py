@@ -250,12 +250,14 @@ INSTRUCTIONS:
 1. CRITICAL: If previous conversation context contains specific data (Run IDs, testers, statuses), use that exact information
 2. Don't request new data searches if the information is already available in the conversation context
 3. Reference specific data points from previous responses when answering follow-up questions
-4. Provide accurate, data-driven responses based on available tool data and conversation history
-5. Be comprehensive but concise
-6. Highlight any potential audit concerns or compliance issues
-7. Use professional audit terminology
+4. CRITICAL: If you made a request for confirmation and the user confirms (says "please proceed", "yes", "confirm", etc.), immediately proceed with the requested action without asking for clarification
+5. Track your own previous requests and commitments - if you asked to perform cross-referencing and user confirms, do the cross-referencing analysis
+6. Provide accurate, data-driven responses based on available tool data and conversation history
+7. Be comprehensive but concise
+8. Highlight any potential audit concerns or compliance issues
+9. Use professional audit terminology
 
-Please analyze the context and conversation history to provide a comprehensive response. If the user is asking about data that was previously provided, reference that specific information directly."""
+Please analyze the context and conversation history to provide a comprehensive response. If you made a previous request and the user confirmed it, proceed with that specific action immediately."""
 
             # Clean up context to avoid issues
             clean_system_prompt = system_prompt.replace('"', "'").replace('\n', ' ').replace('\r', ' ')
@@ -324,15 +326,38 @@ Please rephrase your question and I'll provide a detailed analysis. Error: {str(
         # Generate conversation ID if not provided
         final_conversation_id = conversation_id or f"conv_{ci_id}_{int(datetime.now().timestamp())}"
         
-        # Build context summary from conversation history
+        # Build context summary from conversation history with action tracking
         context_summary = ""
         if conversation_history and len(conversation_history) > 0:
             recent_context = []
-            for msg in conversation_history[-6:]:  # Last 3 exchanges for context
+            pending_actions = []
+            
+            for msg in conversation_history[-6:]:  # Last 6 messages for comprehensive context
                 if msg["role"] == "user":
-                    recent_context.append(f"Previous question: {msg['content'][:100]}...")
+                    user_content = msg['content']
+                    # Check for user confirmations
+                    if any(phrase in user_content.lower() for phrase in ['please proceed', 'yes', 'confirm', 'go ahead', 'continue']):
+                        recent_context.append(f"User confirmed: {user_content}")
+                    else:
+                        recent_context.append(f"Previous question: {user_content[:150]}...")
+                        
                 elif msg["role"] == "assistant":
-                    recent_context.append(f"Previous answer: {msg['content'][:100]}...")
+                    assistant_content = msg['content']
+                    # Track if LLM made requests or asked for confirmation
+                    if any(phrase in assistant_content.lower() for phrase in ['please confirm', 'if you would like', 'would you like me to', 'please let me know']):
+                        # Extract the specific request
+                        if 'cross-referencing' in assistant_content.lower():
+                            pending_actions.append("LLM requested to proceed with cross-referencing analysis between QTest and Jira data")
+                        elif 'analysis' in assistant_content.lower():
+                            pending_actions.append("LLM requested to proceed with data analysis")
+                        recent_context.append(f"LLM requested confirmation: {assistant_content[-300:]}")
+                    else:
+                        recent_context.append(f"Previous answer: {assistant_content[:200]}...")
+            
+            # Combine context with pending actions
+            if pending_actions:
+                recent_context.extend([f"PENDING ACTION: {action}" for action in pending_actions])
+                
             context_summary = "\n".join(recent_context)
         
         # Create initial state
