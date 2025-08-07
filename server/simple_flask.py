@@ -1308,244 +1308,6 @@ def test_endpoint():
     }), 200
 
 
-# Folder-based execution endpoint (simplified approach like Veritas GPT)
-@app.route('/api/agents/execute-folder-based', methods=['POST'])
-def execute_folder_based_agents():
-    """Execute folder-based agents for data collection (simplified approach like Veritas GPT)"""
-    try:
-        data = request.get_json()
-        application_id = data.get('applicationId')
-
-        if not application_id:
-            return jsonify({'error': 'Application ID is required'}), 400
-
-        # Get question analyses and application details
-        conn = get_db_connection()
-        if not conn:
-            return jsonify({'error': 'Database connection failed'}), 500
-
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-
-        # Get application details and question analyses
-        cursor.execute(
-            """
-            SELECT qa.question_id, qa.original_question, qa.category, qa.subcategory,
-                   qa.tool_suggestion, qa.ai_prompt, qa.connector_reason,
-                   app.ci_id, app.audit_name
-            FROM question_analyses qa
-            JOIN applications app ON qa.application_id = app.id
-            WHERE qa.application_id = %s
-            ORDER BY qa.question_id
-        """, (application_id, ))
-
-        question_analyses = []
-        ci_id = None
-        for row in cursor.fetchall():
-            if ci_id is None:
-                ci_id = row['ci_id']
-            
-            analysis_data = {
-                'questionId': row['question_id'],
-                'originalQuestion': row['original_question'],
-                'category': row['category'],
-                'subcategory': row['subcategory'],
-                'toolSuggestion': row['tool_suggestion'],
-                'aiPrompt': row['ai_prompt'],
-                'connectorReason': row['connector_reason'],
-                'ciId': row['ci_id'],
-                'auditName': row['audit_name']
-            }
-            question_analyses.append(analysis_data)
-
-        if not question_analyses:
-            return jsonify({
-                'error': 'No question analyses found for this application. Please complete Step 2 first.'
-            }), 400
-
-        if not ci_id:
-            return jsonify({
-                'error': 'CI ID not found for this application'
-            }), 400
-
-        # Check if tools folder exists for this CI
-        tools_path = os.path.join(os.path.dirname(__file__), 'tools')
-        ci_tools_path = os.path.join(tools_path, ci_id)
-        if not os.path.exists(ci_tools_path):
-            return jsonify({
-                'error': f'Tools folder not found for CI {ci_id}. Expected: server/tools/{ci_id}/',
-                'availableTools': get_available_tools_for_ci(ci_id) if ci_id else []
-            }), 404
-
-        # Initialize LLM for analysis (same as Veritas GPT)
-        from langchain_openai import ChatOpenAI
-        llm = ChatOpenAI(
-            model="gpt-4o",
-            api_key=os.getenv('OPENAI_API_KEY'),
-            temperature=0.1
-        )
-        
-        execution_results = []
-
-        for question_analysis in question_analyses:
-            try:
-                start_time = datetime.now()
-                
-                # Use folder-based tool execution
-                tool_suggestion = question_analysis['toolSuggestion']
-                if isinstance(tool_suggestion, str):
-                    try:
-                        # Try to parse as JSON array if it looks like one
-                        if tool_suggestion.startswith('['):
-                            tool_suggestion = json.loads(tool_suggestion)
-                        else:
-                            tool_suggestion = [tool_suggestion]
-                    except:
-                        tool_suggestion = [tool_suggestion]
-                
-                # Map tool suggestion to folder names (same as Veritas GPT)
-                tool_mapping = {
-                    'sql_server': 'SQL_Server',
-                    'oracle_db': 'Oracle', 
-                    'gnosis': 'Gnosis',
-                    'jira': 'Jira',
-                    'qtest': 'QTest',
-                    'service_now': 'ServiceNow'
-                }
-                
-                mapped_tool = tool_mapping.get(tool_suggestion[0] if tool_suggestion else 'sql_server', 'SQL_Server')
-                
-                # Read tool data from folder (same as Veritas GPT)
-                tool_folder_path = os.path.join(ci_tools_path, mapped_tool)
-                tool_data = ""
-                
-                if os.path.exists(tool_folder_path):
-                    # Read all files in the tool folder
-                    for filename in os.listdir(tool_folder_path):
-                        file_path = os.path.join(tool_folder_path, filename)
-                        if filename.endswith('.txt'):
-                            with open(file_path, 'r', encoding='utf-8') as f:
-                                tool_data += f"\n=== {filename} ===\n{f.read()}\n"
-                        elif filename.endswith('.xlsx'):
-                            try:
-                                import pandas as pd
-                                df = pd.read_excel(file_path)
-                                tool_data += f"\n=== {filename} ===\n{df.head(10).to_string()}\n"
-                            except:
-                                tool_data += f"\n=== {filename} ===\n[Excel file present but could not read]\n"
-                
-                # Create meaningful analysis based on tool data content
-                if tool_data:
-                    # Extract key information from tool data
-                    data_lines = tool_data.split('\n')
-                    relevant_lines = [line for line in data_lines if any(keyword in line.lower() for keyword in ['user', 'access', 'admin', 'role', 'permission', 'login', 'password', 'security', 'audit', 'log'])][:3]
-                    
-                    if relevant_lines:
-                        key_findings = '. '.join(relevant_lines[:2])[:150]
-                        executive_summary = f"Based on {mapped_tool} data analysis: {key_findings}. Compliance review indicates further investigation needed."
-                        findings = [f'Key data from {mapped_tool}: {line[:80]}' for line in relevant_lines[:2]]
-                    else:
-                        # Use first few lines of actual data
-                        sample_data = '. '.join([line.strip() for line in data_lines[:3] if line.strip()])[:150]
-                        executive_summary = f"Analyzed {mapped_tool} data for audit question. Found: {sample_data}. Requires compliance assessment."
-                        findings = [f'Data extracted from {mapped_tool}', f'Sample content: {sample_data[:80]}']
-                else:
-                    executive_summary = f'No data found in {mapped_tool} folder for audit question analysis.'
-                    findings = [f'No data available in {mapped_tool} folder']
-                
-                result = {
-                    'analysis': {
-                        'executiveSummary': executive_summary,
-                        'findings': findings,
-                        'riskLevel': 'Medium',
-                        'complianceStatus': 'Needs Review',
-                        'dataPoints': len(tool_data.split('\n')) if tool_data else 0,
-                        'confidence': 0.85 if tool_data else 0.25,
-                        'toolsUsed': [mapped_tool]
-                    }
-                }
-                
-                end_time = datetime.now()
-                duration = (end_time - start_time).total_seconds()
-
-                # Format execution result
-                execution_result = {
-                    'questionId': question_analysis['questionId'],
-                    'originalQuestion': question_analysis['originalQuestion'],
-                    'toolsUsed': [mapped_tool],  # Use the mapped tool name (e.g., "ServiceNow" instead of "service_now")
-                    'duration': duration,
-                    'status': 'completed',
-                    'executedAt': datetime.now().isoformat(),
-                    'result': result,
-                    'folderBased': True
-                }
-
-                # Store execution result in database (simple insert without conflict handling)
-                try:
-                    cursor.execute(
-                        """
-                        INSERT INTO agent_executions 
-                        (application_id, question_id, result)
-                        VALUES (%s, %s, %s)
-                        RETURNING id
-                    """, (application_id, execution_result['questionId'],
-                          json.dumps(execution_result)))
-                    
-                    execution_id = cursor.fetchone()['id']
-                    execution_result['databaseId'] = execution_id
-                except Exception as db_error:
-                    # Database insert failed, but execution succeeded
-                    execution_result['databaseId'] = None
-                    execution_result['dbError'] = str(db_error)
-
-                execution_results.append(execution_result)
-
-            except Exception as e:
-                print(f"Error executing question {question_analysis['questionId']}: {e}")
-                # Create a simple fallback result
-                fallback_mapped_tool = tool_mapping.get(tool_suggestion[0] if 'tool_suggestion' in locals() and tool_suggestion else 'sql_server', 'SQL_Server')
-                fallback_result = {
-                    'questionId': question_analysis['questionId'],
-                    'originalQuestion': question_analysis['originalQuestion'],
-                    'toolsUsed': [fallback_mapped_tool],  # Use mapped tool name
-                    'duration': 1.0,
-                    'status': 'completed_with_issues',
-                    'executedAt': datetime.now().isoformat(),
-                    'result': {
-                        'analysis': {
-                            'executiveSummary': f'Data collection attempted for: {question_analysis["originalQuestion"]}. Technical issue with folder-based execution.',
-                            'findings': ['Folder-based tool execution encountered issues'],
-                            'riskLevel': 'Medium',
-                            'complianceStatus': 'Review Required',
-                            'dataPoints': 0
-                        }
-                    },
-                    'folderBased': True,
-                    'error': str(e)
-                }
-                execution_results.append(fallback_result)
-
-        conn.commit()
-
-        return jsonify({
-            'success': True,
-            'message': f'Successfully executed {len(execution_results)} questions using folder-based tools',
-            'executionResults': execution_results,
-            'totalQuestions': len(question_analyses),
-            'successfulExecutions': len(execution_results),
-            'ciId': ci_id,
-            'toolsPath': f'server/tools/{ci_id}'
-        }), 200
-
-    except Exception as e:
-        if conn:
-            conn.rollback()
-        return jsonify({'error': f'Error executing folder-based agents: {str(e)}'}), 500
-
-    finally:
-        if 'conn' in locals() and conn:
-            cursor.close()
-            conn.close()
-
 # File-Based Agent Execution API
 @app.route('/api/agents/execute', methods=['POST'])
 def execute_agent_request():
@@ -1791,85 +1553,73 @@ def get_agent_executions(application_id):
             conn.close()
 
 
-# Folder-based Tool Connectors API (simplified approach like Veritas GPT)
-def get_available_tools_for_ci(ci_id):
-    """Get available tools from folder structure for a CI"""
-    tools_path = os.path.join(os.path.dirname(__file__), 'tools', ci_id)
-    available_tools = []
-    
-    if os.path.exists(tools_path):
-        for item in os.listdir(tools_path):
-            item_path = os.path.join(tools_path, item)
-            if os.path.isdir(item_path):
-                # Map folder names to connector types
-                folder_to_type = {
-                    'SQL_Server': 'SQL Server DB',
-                    'Oracle': 'Oracle DB',
-                    'Gnosis': 'Gnosis Document Repository',
-                    'ServiceNow': 'ServiceNow',
-                    'Jira': 'Jira',
-                    'QTest': 'QTest'
-                }
-                
-                connector_type = folder_to_type.get(item, item)
-                available_tools.append({
-                    'folderName': item,
-                    'connectorType': connector_type,
-                    'status': 'active',  # Folder-based tools are always active
-                    'hasData': len(os.listdir(item_path)) > 0
-                })
-    
-    return available_tools
-
-@app.route('/api/connectors/available/<ci_id>', methods=['GET'])
-def get_available_connectors(ci_id):
-    """Get available connectors from folder structure"""
-    try:
-        available_tools = get_available_tools_for_ci(ci_id)
-        
-        return jsonify({
-            'availableConnectors': available_tools,
-            'folderPath': f'server/tools/{ci_id}',
-            'totalTools': len(available_tools)
-        }), 200
-
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
+# Tool Connectors API for Settings page
 @app.route('/api/connectors', methods=['POST'])
 def create_tool_connector():
-    """Create tool connector (simplified for folder-based approach)"""
+    """Create new tool connector"""
     try:
         data = request.get_json()
         if not data:
             return jsonify({'error': 'No data provided'}), 400
 
-        ci_id = data.get('ciId')
-        connector_type = data.get('connectorType')
-        
-        # Check if folder exists for this CI and connector type
-        available_tools = get_available_tools_for_ci(ci_id)
-        
-        if not any(tool['connectorType'] == connector_type for tool in available_tools):
+        # Find application by CI ID
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'error': 'Database connection failed'}), 500
+
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute("SELECT id FROM applications WHERE ci_id = %s LIMIT 1",
+                       (data.get('ciId'), ))
+        app_row = cursor.fetchone()
+
+        if not app_row:
             return jsonify({
-                'error': f'Tool folder not found for {connector_type}',
-                'availableTools': [tool['connectorType'] for tool in available_tools]
+                'error':
+                f'No application found for CI ID: {data.get("ciId")}'
             }), 404
 
-        # For folder-based approach, just return success with tool info
+        application_id = app_row['id']
+
+        # Get connector name from data, or generate default
+        connector_name = data.get('connectorName')
+        if not connector_name:
+            connector_name = f"{data.get('connectorType', 'Unknown')} - {application_id}"
+
+        # Insert tool connector
+        cursor.execute(
+            """
+            INSERT INTO tool_connectors (application_id, ci_id, connector_name, connector_type, configuration, status)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            RETURNING id, application_id, ci_id, connector_name, connector_type, configuration, status, created_at
+        """, (application_id, data.get('ciId'), connector_name,
+              data.get('connectorType'),
+              json.dumps(data.get('configuration',
+                                  {})), data.get('status', 'pending')))
+
+        row = cursor.fetchone()
+        conn.commit()
+
         connector_data = {
-            'id': f"folder_{ci_id}_{connector_type.replace(' ', '_')}",
-            'ciId': ci_id,
-            'connectorType': connector_type,
-            'status': 'active',
-            'folderBased': True,
-            'createdAt': datetime.now().isoformat()
+            'id': row['id'],
+            'applicationId': row['application_id'],
+            'ciId': row['ci_id'],
+            'connectorName': row['connector_name'],
+            'connectorType': row['connector_type'],
+            'configuration': row['configuration'],
+            'status': row['status'],
+            'createdAt': row['created_at']
         }
 
         return jsonify(connector_data), 201
 
     except Exception as e:
+        if conn:
+            conn.rollback()
         return jsonify({'error': str(e)}), 500
+    finally:
+        if conn:
+            cursor.close()
+            conn.close()
 
 
 @app.route('/api/questions/save-answer', methods=['POST'])
@@ -2943,28 +2693,43 @@ def database_health_check():
 # Get connectors by CI ID endpoint (for Settings page)
 @app.route('/api/connectors/ci/<string:ci_id>', methods=['GET'])
 def get_connectors_by_ci(ci_id):
-    """Get all connectors for a specific CI ID (folder-based approach)"""
+    """Get all connectors for a specific CI ID"""
     try:
-        # Get available tools from folder structure
-        available_tools = get_available_tools_for_ci(ci_id)
-        
-        # Format as connectors for frontend compatibility
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'error': 'Database connection failed'}), 500
+
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute(
+            """
+            SELECT id, application_id, ci_id, connector_name, connector_type, 
+                   configuration, status, created_at
+            FROM tool_connectors 
+            WHERE ci_id = %s
+            ORDER BY created_at DESC
+        """, (ci_id, ))
+
         connectors = []
-        for tool in available_tools:
+        for row in cursor.fetchall():
             connector_data = {
-                'id': f"folder_{ci_id}_{tool['folderName']}",
-                'applicationId': None,  # Not needed for folder-based
-                'ciId': ci_id,
-                'connectorName': f"{tool['connectorType']} (Folder-based)",
-                'connectorType': tool['connectorType'],
-                'configuration': {
-                    'folderPath': f"server/tools/{ci_id}/{tool['folderName']}",
-                    'folderBased': True
-                },
-                'status': tool['status'],
-                'folderBased': True,
-                'hasData': tool['hasData'],
-                'createdAt': datetime.now().isoformat()
+                'id':
+                row['id'],
+                'applicationId':
+                row['application_id'],
+                'ciId':
+                row['ci_id'],
+                'connectorName':
+                row['connector_name'],
+                'connectorType':
+                row['connector_type'],
+                'configuration':
+                json.loads(row['configuration']) if isinstance(
+                    row['configuration'], str) else
+                (row['configuration'] if row['configuration'] else {}),
+                'status':
+                row['status'],
+                'createdAt':
+                row['created_at']
             }
             connectors.append(connector_data)
 
@@ -2972,6 +2737,10 @@ def get_connectors_by_ci(ci_id):
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+    finally:
+        if conn:
+            cursor.close()
+            conn.close()
 
 
 # ============= VERITAS GPT ENDPOINTS =============

@@ -7,8 +7,8 @@
 
 -- Clear existing data (in correct order respecting foreign keys)
 DELETE FROM veritas_conversations;
+DELETE FROM context_documents;
 DELETE FROM audit_results;
-DELETE FROM question_answers;
 DELETE FROM agent_executions;
 DELETE FROM question_analyses;
 DELETE FROM data_collection_sessions;
@@ -22,90 +22,90 @@ ALTER SEQUENCE data_requests_id_seq RESTART WITH 1;
 ALTER SEQUENCE tool_connectors_id_seq RESTART WITH 1;
 ALTER SEQUENCE data_collection_sessions_id_seq RESTART WITH 1;
 ALTER SEQUENCE question_analyses_id_seq RESTART WITH 1;
-ALTER SEQUENCE question_answers_id_seq RESTART WITH 1;
 ALTER SEQUENCE audit_results_id_seq RESTART WITH 1;
 ALTER SEQUENCE agent_executions_id_seq RESTART WITH 1;
+ALTER SEQUENCE context_documents_id_seq RESTART WITH 1;
 ALTER SEQUENCE veritas_conversations_id_seq RESTART WITH 1;
 
 -- =====================================================
 -- SAMPLE APPLICATIONS (Realistic Audit Projects)
 -- =====================================================
 
-INSERT INTO applications (audit_name, name, ci_id, start_date, end_date, settings, enable_followup_questions, status) VALUES
+INSERT INTO applications (audit_name, name, ci_id, start_date, end_date, status, settings) VALUES
 -- Active Audit Applications with Enhanced Settings
-('Q2 2025 Financial Systems Compliance Audit', 'Financial Systems Q2', 'CI21345001', '2025-04-01', '2025-06-30', 
-'{"audit_type": "financial", "priority": "high", "lead_auditor": "Sarah Johnson", "team_size": 5, "budget": 150000, "compliance_frameworks": ["SOX", "COSO"]}', true, 'In Progress'),
+('Q2 2025 Financial Systems Compliance Audit', 'Financial Systems Q2', 'CI21345001', '2025-04-01', '2025-06-30', 'In Progress', 
+'{"audit_type": "financial", "priority": "high", "lead_auditor": "Sarah Johnson", "team_size": 5, "budget": 150000, "compliance_frameworks": ["SOX", "COSO"]}'),
 
-('Security & Access Control Review 2025', 'Security Compliance Review', 'CI21345002', '2025-01-01', '2025-12-31', 
-'{"audit_type": "security", "priority": "critical", "lead_auditor": "Mike Chen", "team_size": 8, "budget": 250000, "compliance_frameworks": ["ISO27001", "NIST"]}', true, 'In Progress'),
+('Security & Access Control Review 2025', 'Security Compliance Review', 'CI21345002', '2025-01-01', '2025-12-31', 'In Progress', 
+'{"audit_type": "security", "priority": "critical", "lead_auditor": "Mike Chen", "team_size": 8, "budget": 250000, "compliance_frameworks": ["ISO27001", "NIST"]}'),
 
-('Infrastructure & Change Management Assessment H1', 'Infrastructure Assessment H1', 'CI21345003', '2025-01-01', '2025-06-30', 
-'{"audit_type": "infrastructure", "priority": "medium", "lead_auditor": "Lisa Rodriguez", "team_size": 4, "budget": 100000, "compliance_frameworks": ["ITIL", "COBIT"]}', false, 'In Progress'),
+('Infrastructure & Change Management Assessment H1', 'Infrastructure Assessment H1', 'CI21345003', '2025-01-01', '2025-06-30', 'In Progress', 
+'{"audit_type": "infrastructure", "priority": "medium", "lead_auditor": "Lisa Rodriguez", "team_size": 4, "budget": 100000, "compliance_frameworks": ["ITIL", "COBIT"]}'),
 
 -- The Stark G4 audit with comprehensive tool integration (matches existing test data)
-('Stark G4 Q2CA2025 Comprehensive Systems Audit', 'Stark G4 Comprehensive', 'CI21324354', '2025-01-01', '2025-07-21', 
-'{"audit_type": "comprehensive", "priority": "critical", "lead_auditor": "David Kim", "team_size": 12, "budget": 500000, "compliance_frameworks": ["SOX", "ISO27001", "NIST", "COBIT"]}', true, 'In Progress'),
+('Stark G4 Q2CA2025 Comprehensive Systems Audit', 'Stark G4 Comprehensive', 'CI21324354', '2025-01-01', '2025-07-21', 'In Progress', 
+'{"audit_type": "comprehensive", "priority": "critical", "lead_auditor": "David Kim", "team_size": 12, "budget": 500000, "compliance_frameworks": ["SOX", "ISO27001", "NIST", "COBIT"]}'),
 
 -- Completed audit example
-('ERP System Migration & Data Governance Audit', 'ERP Migration Audit', 'CI21345005', '2024-10-01', '2024-12-31', 
-'{"audit_type": "migration", "priority": "high", "lead_auditor": "Anna Walsh", "team_size": 6, "budget": 180000, "compliance_frameworks": ["SOX", "GDPR"], "completion_date": "2024-12-20"}', false, 'Complete');
+('ERP System Migration & Data Governance Audit', 'ERP Migration Audit', 'CI21345005', '2024-10-01', '2024-12-31', 'Complete', 
+'{"audit_type": "migration", "priority": "high", "lead_auditor": "Anna Walsh", "team_size": 6, "budget": 180000, "compliance_frameworks": ["SOX", "GDPR"], "completion_date": "2024-12-20"}');
 
 -- =====================================================
 -- SAMPLE TOOL CONNECTORS (Comprehensive Integration)
 -- =====================================================
 
-INSERT INTO tool_connectors (application_id, ci_id, connector_type, configuration, status, connector_name) VALUES
+INSERT INTO tool_connectors (application_id, ci_id, connector_type, configuration, status) VALUES
 -- Financial Systems Connectors (App 1)
 (1, 'CI21345001', 'SQL Server Database', 
-'{"server": "fin-db-prod.company.com", "database": "FinancialData", "port": 1433, "auth_method": "integrated", "connection_timeout": 30}', 'active', 'Primary SQL Server'),
+'{"server": "fin-db-prod.company.com", "database": "FinancialData", "port": 1433, "auth_method": "integrated", "connection_timeout": 30}', 'active'),
 
 (1, 'CI21345001', 'Oracle Database', 
-'{"server": "oracle-fin.company.com", "database": "FINPROD", "port": 1521, "service_name": "FINPROD", "schema": "FIN_AUDIT"}', 'active', 'Oracle Compliance DB'),
+'{"server": "oracle-fin.company.com", "database": "FINPROD", "port": 1521, "service_name": "FINPROD", "schema": "FIN_AUDIT"}', 'active'),
 
 (1, 'CI21345001', 'ServiceNow', 
-'{"instance": "company.service-now.com", "endpoint": "api/now/table/incident", "version": "v1", "authentication": "oauth2"}', 'active', 'IT Service Management'),
+'{"instance": "company.service-now.com", "endpoint": "api/now/table/incident", "version": "v1", "authentication": "oauth2"}', 'active'),
 
 -- Security Compliance Connectors (App 2)
 (2, 'CI21345002', 'SQL Server Database', 
-'{"server": "sec-db-prod.company.com", "database": "SecurityLogs", "port": 1433, "auth_method": "sql_auth", "encryption": true}', 'active', 'Security Database'),
+'{"server": "sec-db-prod.company.com", "database": "SecurityLogs", "port": 1433, "auth_method": "sql_auth", "encryption": true}', 'active'),
 
 (2, 'CI21345002', 'Jira', 
-'{"server": "company.atlassian.net", "project_key": "SEC", "api_version": "3", "authentication": "token", "issue_types": ["Bug", "Security Incident"]}', 'active', 'Audit Project Tracker'),
+'{"server": "company.atlassian.net", "project_key": "SEC", "api_version": "3", "authentication": "token", "issue_types": ["Bug", "Security Incident"]}', 'active'),
 
 (2, 'CI21345002', 'Gnosis Document Repository', 
-'{"server": "docs.company.com", "repository": "security-policies", "api_endpoint": "/api/v2/documents", "access_level": "read"}', 'active', 'Corporate Document Store'),
+'{"server": "docs.company.com", "repository": "security-policies", "api_endpoint": "/api/v2/documents", "access_level": "read"}', 'active'),
 
 -- Infrastructure Assessment Connectors (App 3)
 (3, 'CI21345003', 'Oracle Database', 
-'{"server": "infra-oracle.company.com", "database": "INFRAPROD", "port": 1521, "service_name": "INFRAPROD", "monitoring": true}', 'active', 'Infrastructure Database'),
+'{"server": "infra-oracle.company.com", "database": "INFRAPROD", "port": 1521, "service_name": "INFRAPROD", "monitoring": true}', 'active'),
 
 (3, 'CI21345003', 'ServiceNow', 
-'{"instance": "company.service-now.com", "endpoint": "api/now/cmdb/ci", "version": "v1", "table": "cmdb_ci"}', 'active', 'CMDB Service'),
+'{"instance": "company.service-now.com", "endpoint": "api/now/cmdb/ci", "version": "v1", "table": "cmdb_ci"}', 'active'),
 
 -- Stark G4 Comprehensive Connectors (App 4) - Matches test data structure
 (4, 'CI21324354', 'SQL Server Database', 
-'{"server": "sql-prod-01.company.com", "database": "AuditDB", "port": 1433, "integrated_auth": true, "connection_string": "trusted"}', 'active', 'Primary SQL Server'),
+'{"server": "sql-prod-01.company.com", "database": "AuditDB", "port": 1433, "integrated_auth": true, "connection_string": "trusted"}', 'active'),
 
 (4, 'CI21324354', 'Oracle Database', 
-'{"host": "oracle-prod.company.com", "port": 1521, "service": "AUDIT", "schema": "COMPLIANCE", "connection_pool": true}', 'active', 'Oracle Compliance DB'),
+'{"host": "oracle-prod.company.com", "port": 1521, "service": "AUDIT", "schema": "COMPLIANCE", "connection_pool": true}', 'active'),
 
 (4, 'CI21324354', 'Gnosis Document Repository', 
-'{"base_url": "https://gnosis.company.com", "access_level": "read-write", "document_types": ["policies", "procedures", "standards"]}', 'active', 'Corporate Document Store'),
+'{"base_url": "https://gnosis.company.com", "access_level": "read-write", "document_types": ["policies", "procedures", "standards"]}', 'active'),
 
 (4, 'CI21324354', 'Jira', 
-'{"base_url": "https://company.atlassian.net", "project_keys": ["AUDIT", "COMP", "STARK"], "issue_types": ["Task", "Bug", "Story", "Epic"]}', 'active', 'Audit Project Tracker'),
+'{"base_url": "https://company.atlassian.net", "project_keys": ["AUDIT", "COMP", "STARK"], "issue_types": ["Task", "Bug", "Story", "Epic"]}', 'active'),
 
 (4, 'CI21324354', 'QTest', 
-'{"base_url": "https://company.qtestnet.com", "project_id": "12345", "cycle_name": "Q2_Audit_2025", "test_suites": ["Security", "Functional"]}', 'active', 'Quality Test Management'),
+'{"base_url": "https://company.qtestnet.com", "project_id": "12345", "cycle_name": "Q2_Audit_2025", "test_suites": ["Security", "Functional"]}', 'active'),
 
 (4, 'CI21324354', 'ServiceNow', 
-'{"instance": "company.service-now.com", "table": "incident", "filter": "category=audit", "additional_tables": ["change_request", "problem"]}', 'active', 'IT Service Management');
+'{"instance": "company.service-now.com", "table": "incident", "filter": "category=audit", "additional_tables": ["change_request", "problem"]}', 'active');
 
 -- =====================================================
 -- SAMPLE DATA REQUESTS (Realistic File Processing)
 -- =====================================================
 
-INSERT INTO data_requests (application_id, file_name, file_size, file_type, questions, total_questions, categories, subcategories, column_mappings, file_path) VALUES
+INSERT INTO data_requests (application_id, file_name, file_size, file_type, questions, total_questions, categories, subcategories, column_mappings) VALUES
 -- Financial Systems Primary Questions
 (1, 'Financial_Audit_Questions_Q2_2025.xlsx', 245760, 'primary', 
 '[
@@ -120,8 +120,7 @@ INSERT INTO data_requests (application_id, file_name, file_size, file_type, ques
 7, 
 '["Financial Controls", "Access Controls", "Process Controls"]', 
 '["Cash Management", "Journal Entry Controls", "System Access", "Balance Verification", "Accounts Payable", "Period Close", "Manual Adjustments"]', 
-'{"question_number": "A", "process": "B", "sub_process": "C", "question": "D", "control_objective": "E"}', 
-'uploads/audit_1_Financial_Systems_Q2/primary_20250721_143022_Financial_Audit_Questions_Q2_2025.xlsx'),
+'{"question_number": "A", "process": "B", "sub_process": "C", "question": "D", "control_objective": "E"}'),
 
 -- Security Compliance Primary Questions  
 (2, 'Security_Compliance_Audit_2025.xlsx', 189440, 'primary',
@@ -136,8 +135,7 @@ INSERT INTO data_requests (application_id, file_name, file_size, file_type, ques
 6,
 '["Identity Management", "Access Management", "Incident Management", "Security Training", "Vulnerability Management", "Change Management"]',
 '["Password Policies", "Privileged Access", "Security Incidents", "Awareness Programs", "Scanning Tools", "Patch Management"]',
-'{"question_number": "A", "process": "B", "sub_process": "C", "question": "D", "control_type": "E"}',
-'uploads/audit_2_Security_Compliance/primary_20250721_143125_Security_Compliance_Audit_2025.xlsx'),
+'{"question_number": "A", "process": "B", "sub_process": "C", "question": "D", "control_type": "E"}'),
 
 -- Stark G4 Comprehensive Primary Questions (Matches enhanced sample sheets)
 (4, 'SAMPLE_Primary_Audit_Questions_Enhanced.xlsx', 387264, 'primary',
@@ -160,8 +158,7 @@ INSERT INTO data_requests (application_id, file_name, file_size, file_type, ques
 14,
 '["Access Controls", "Change Management", "Business Continuity", "Policy Management", "Quality Assurance", "Incident Management", "Data Governance", "Performance Management", "Audit & Logging"]',
 '["Database Security", "Database Changes", "Data Protection", "Security Governance", "Test Automation", "Ticket Processing", "Approval Processes", "Test Documentation", "Classification", "Database Monitoring", "Environment Separation", "Patch Testing", "Privileged Access Logging", "Plan Testing"]',
-'{"question_number": "A", "process": "B", "sub_process": "C", "question": "D", "tool_used": "E", "priority": "F"}',
-'uploads/audit_4_Stark_G4/primary_20250806_140000_SAMPLE_Primary_Audit_Questions_Enhanced.xlsx'),
+'{"question_number": "A", "process": "B", "sub_process": "C", "question": "D", "tool_used": "E", "priority": "F"}'),
 
 -- Stark G4 Follow-up Questions
 (4, 'SAMPLE_Followup_Audit_Questions_Enhanced.xlsx', 198432, 'followup',
@@ -177,48 +174,47 @@ INSERT INTO data_requests (application_id, file_name, file_size, file_type, ques
 7,
 '["Access Controls", "Change Management", "Vulnerability Management", "Quality Assurance", "Training & Awareness", "Data Governance", "Performance Management"]',
 '["Access Review Exceptions", "Emergency Changes", "Remediation Tracking", "Failure Resolution", "Completion Tracking", "Retention Management", "Issue Identification"]',
-'{"question_number": "A", "process": "B", "sub_process": "C", "question": "D", "follow_up_reason": "E"}',
-'uploads/audit_4_Stark_G4/followup_20250806_141500_SAMPLE_Followup_Audit_Questions_Enhanced.xlsx');
+'{"question_number": "A", "process": "B", "sub_process": "C", "question": "D", "follow_up_reason": "E"}');
 
 -- =====================================================
 -- SAMPLE QUESTION ANALYSES (AI Analysis Results)
 -- =====================================================
 
-INSERT INTO question_analyses (application_id, question_id, original_question, category, subcategory, ai_prompt, tool_suggestion, connector_reason, connector_to_use, connector_id) VALUES
+INSERT INTO question_analyses (application_id, question_id, original_question, category, subcategory, ai_prompt, tool_suggestion, connector_reason, connector_to_use) VALUES
 -- Financial Systems Analyses
 (1, 'Q001', 'What are the current account reconciliation procedures for cash accounts?', 'Financial Controls', 'Cash Management',
 'Analyze account reconciliation procedures for cash accounts. Examine control processes, frequency requirements, approval workflows, exception handling, and documentation standards for cash reconciliations.',
-'SQL Server Database', 'Cash reconciliation procedures and transaction details are typically stored in financial databases with comprehensive audit trails and approval records.', 'SQL Server Database', 1),
+'SQL Server Database', 'Cash reconciliation procedures and transaction details are typically stored in financial databases with comprehensive audit trails and approval records.', 'SQL Server Database'),
 
 (1, 'Q002', 'How are journal entries reviewed and approved in the general ledger?', 'Financial Controls', 'Journal Entry Controls',
 'Examine journal entry review and approval processes in the general ledger system. Focus on segregation of duties, approval hierarchies, supporting documentation requirements, and audit trail maintenance.',
-'SQL Server Database', 'Journal entry approval workflows and audit trails are maintained in financial system databases with detailed approval records and supporting documentation.', 'SQL Server Database', 1),
+'SQL Server Database', 'Journal entry approval workflows and audit trails are maintained in financial system databases with detailed approval records and supporting documentation.', 'SQL Server Database'),
 
 -- Security Compliance Analyses
 (2, 'Q001', 'What password policies are currently enforced across all systems?', 'Identity Management', 'Password Policies',
 'Review current password policy enforcement including complexity requirements, expiration settings, account lockout policies, and compliance monitoring across all enterprise systems.',
-'Gnosis Document Repository', 'Password policies and security standards are typically documented in enterprise document repositories with version control and approval workflows.', 'Gnosis Document Repository', 6),
+'Gnosis Document Repository', 'Password policies and security standards are typically documented in enterprise document repositories with version control and approval workflows.', 'Gnosis Document Repository'),
 
 (2, 'Q002', 'How are privileged accounts monitored and periodically reviewed?', 'Access Management', 'Privileged Access',
 'Examine privileged account monitoring processes including access reviews, activity logging, recertification procedures, and exception reporting for elevated access rights.',
-'SQL Server Database', 'Privileged account monitoring data, access logs, and review results are typically stored in security databases with comprehensive audit trails.', 'SQL Server Database', 4),
+'SQL Server Database', 'Privileged account monitoring data, access logs, and review results are typically stored in security databases with comprehensive audit trails.', 'SQL Server Database'),
 
 -- Stark G4 Comprehensive Analyses (Multi-tool scenarios)
 (4, 'Q001', 'What user access controls are implemented in the SQL Server database?', 'Access Controls', 'Database Security',
 'Analyze user access controls in SQL Server database including role-based permissions, authentication methods, access logging, and periodic access reviews.',
-'SQL Server Database', 'Database access controls and user permissions are directly queryable from the SQL Server system with detailed role and permission information.', 'SQL Server Database', 9),
+'SQL Server Database', 'Database access controls and user permissions are directly queryable from the SQL Server system with detailed role and permission information.', 'SQL Server Database'),
 
 (4, 'Q005', 'What automated testing procedures are implemented for system changes?', 'Quality Assurance', 'Test Automation',
 'Examine automated testing procedures for system changes including test case management, execution automation, result reporting, and integration with change management processes.',
-'QTest', 'Automated testing procedures and test execution results are comprehensively managed in QTest with detailed test case documentation and execution history.', 'QTest', 13),
+'QTest', 'Automated testing procedures and test execution results are comprehensively managed in QTest with detailed test case documentation and execution history.', 'QTest'),
 
 (4, 'Q006', 'How are incidents tracked and resolved in the ServiceNow system?', 'Incident Management', 'Ticket Processing',
 'Review incident tracking and resolution processes in ServiceNow including ticket workflow, escalation procedures, SLA compliance, and resolution documentation.',
-'ServiceNow', 'Incident tracking and resolution data is directly available in ServiceNow with comprehensive workflow history and performance metrics.', 'ServiceNow', 14),
+'ServiceNow', 'Incident tracking and resolution data is directly available in ServiceNow with comprehensive workflow history and performance metrics.', 'ServiceNow'),
 
 (4, 'Q007', 'What change approval workflows exist in Jira for system modifications?', 'Change Management', 'Approval Processes',
 'Analyze change approval workflows in Jira including approval hierarchies, review processes, documentation requirements, and change tracking mechanisms.',
-'Jira', 'Change approval workflows and modification tracking are managed in Jira with detailed approval histories and change documentation.', 'Jira', 12);
+'Jira', 'Change approval workflows and modification tracking are managed in Jira with detailed approval histories and change documentation.', 'Jira');
 
 -- =====================================================
 -- SAMPLE DATA COLLECTION SESSIONS
@@ -343,59 +339,70 @@ INSERT INTO audit_results (application_id, session_id, question_id, question, ca
 'uploads/audit_4_Stark_G4/results/Q007_change_management_analysis.pdf');
 
 -- =====================================================
--- SAMPLE QUESTION ANSWERS (Execution Results)
+-- SAMPLE CONTEXT DOCUMENTS (Veritas GPT Support)
 -- =====================================================
 
-INSERT INTO question_answers (application_id, question_id, answer, findings, risk_level, compliance_status, data_points, execution_details) VALUES
--- Financial Systems Question Answers
-(1, 'Q001', 'Cash account reconciliations are performed daily with comprehensive approval workflows and exception reporting mechanisms in place.',
-'{"reconciliation_frequency": "Daily for all major cash accounts", "approval_hierarchy": "Preparer -> Reviewer -> Manager approval required", "documentation": "Standardized templates with supporting documentation requirements", "exceptions": "Automated exception reporting with 24-hour resolution requirement"}',
-'Low', 'Compliant', 847,
-'{"confidence": 0.92, "data_sources": ["gl_reconciliations", "cash_accounts", "approval_workflows"], "query_execution_time": 2.3}'),
+INSERT INTO context_documents (ci_id, document_type, file_name, file_path, file_size) VALUES
+-- Stark G4 Context Documents
+('CI21324354', 'support_plan', 'Stark_G4_Support_Plan_2025.pdf', 'uploads/context/CI21324354/support_plan/Stark_G4_Support_Plan_2025.pdf', 2456789),
+('CI21324354', 'design_diagram', 'System_Architecture_Diagram_v2.1.pdf', 'uploads/context/CI21324354/design_diagram/System_Architecture_Diagram_v2.1.pdf', 3678432),
+('CI21324354', 'additional_supplements', 'Data_Flow_Analysis.docx', 'uploads/context/CI21324354/additional_supplements/Data_Flow_Analysis.docx', 987654),
+('CI21324354', 'other', 'Risk_Assessment_Matrix.xlsx', 'uploads/context/CI21324354/other/Risk_Assessment_Matrix.xlsx', 456123),
 
-(1, 'Q002', 'Journal entries require two-level approval with strict segregation of duties and complete audit trail maintenance.',
-'{"approval_process": "Two-level approval: preparer cannot approve own entries", "segregation_duties": "Role-based access prevents conflicts of interest", "documentation": "Supporting docs required for entries >$10,000", "audit_trail": "Complete audit trail with timestamps and user tracking"}',
-'Low', 'Compliant', 1205,
-'{"confidence": 0.89, "data_sources": ["journal_entries", "approval_logs", "user_roles"], "query_execution_time": 3.1}'),
+-- Financial Systems Context Documents
+('CI21345001', 'support_plan', 'Financial_Systems_Support_Plan.pdf', 'uploads/context/CI21345001/support_plan/Financial_Systems_Support_Plan.pdf', 1876543),
+('CI21345001', 'design_diagram', 'Financial_Data_Flow_Diagram.pdf', 'uploads/context/CI21345001/design_diagram/Financial_Data_Flow_Diagram.pdf', 2987654),
 
--- Security Compliance Question Answers
-(2, 'Q001', 'Enterprise password policies meet industry standards with automated enforcement and 98% user compliance.',
-'{"complexity": "Minimum 12 characters, mixed case, numbers, special characters required", "expiration": "90-day password expiration with 14-day advance warning", "enforcement": "Automated through Active Directory with real-time policy checking", "compliance": "98% user compliance with monthly reporting"}',
-'Low', 'Compliant', 156,
-'{"confidence": 0.94, "data_sources": ["policy_documents", "compliance_reports"], "document_count": 156}'),
-
--- Stark G4 Question Answers (Multi-tool execution results)
-(4, 'Q005', 'Comprehensive automated testing framework with 85% test automation coverage and integration with change management systems.',
-'{"automation_coverage": "85% of regression tests automated", "test_cases": "2,847 active test cases across 15 application modules", "execution_frequency": "Automated tests run nightly and on-demand for releases", "integration": "Direct integration with Jira for requirement traceability"}',
-'Medium', 'Mostly Compliant', 2847,
-'{"confidence": 0.91, "data_sources": ["qtest_cycles", "automation_scripts"], "test_cycles": 156}'),
-
-(4, 'Q006', 'ServiceNow incident management demonstrates strong SLA compliance with automated escalation and comprehensive tracking.',
-'{"sla_compliance": "94% SLA compliance across all incident priorities", "resolution_time": "Average 4 hours P1, 2.3 days P2, 5 days P3", "escalation": "Automated escalation at 50%, 75%, and 90% of SLA", "workflow": "Standardized ITIL-based workflow with approval gates"}',
-'Low', 'Compliant', 3421,
-'{"confidence": 0.88, "data_sources": ["incident_records", "sla_metrics"], "incident_count": 3421}');
+-- Security Compliance Context Documents
+('CI21345002', 'support_plan', 'Security_Compliance_Plan.pdf', 'uploads/context/CI21345002/support_plan/Security_Compliance_Plan.pdf', 2345678),
+('CI21345002', 'additional_supplements', 'Security_Control_Matrix.xlsx', 'uploads/context/CI21345002/additional_supplements/Security_Control_Matrix.xlsx', 567890);
 
 -- =====================================================
--- SAMPLE VERITAS CONVERSATIONS (Current Schema)
+-- SAMPLE VERITAS CONVERSATIONS (Chat History)
 -- =====================================================
 
-INSERT INTO veritas_conversations (conversation_id, ci_id, audit_id, audit_name, message, response, tools_used) VALUES
+INSERT INTO veritas_conversations (ci_id, conversation_id, messages, updated_at) VALUES
 -- Stark G4 Conversation with realistic data analysis
-('conv_stark_20250806_001', 'CI21324354', '4', 'Stark G4 Comprehensive', 
-'What testing data do you have for RunID 101?',
-'Based on my analysis of the QTest data files, RunID 101 shows the following testing information:\n\n**Test Execution Summary:**\n- Test Run: Login Functionality Test Suite\n- Tester: Sarah Johnson\n- Status: **Failed**\n- Execution Date: 2025-07-15\n- Environment: UAT\n\n**Failure Details:**\n- 3 out of 8 test cases failed\n- Primary issue: Authentication timeout after 30 seconds\n- Failed test cases: TC_LOGIN_001, TC_LOGIN_005, TC_LOGIN_007\n- Root cause: Database connection pool exhaustion\n\n**Cross-Reference with Jira:**\nThis failure is linked to Jira defect JIRA-123 which documents the authentication timeout issue and includes remediation steps.',
-'["QTest", "Jira"]'),
-
-('conv_stark_20250806_002', 'CI21324354', '4', 'Stark G4 Comprehensive',
-'Tell me about the Jira defect JIRA-123 status',
-'Here are the details for Jira defect JIRA-123 related to the authentication timeout:\n\n**Defect Information:**\n- **Issue Key:** JIRA-123\n- **Title:** Authentication Timeout - Database Connection Pool Exhaustion\n- **Status:** In Progress\n- **Priority:** High\n- **Assignee:** Mike Chen (Senior Developer)\n- **Reporter:** Sarah Johnson (QA Lead)\n\n**Technical Details:**\n- Created: 2025-07-16 (day after test failure)\n- Environment: UAT, Production impact potential\n- Components: Authentication Service, Database Layer\n- Fix Version: Release 2.3.1\n\n**Resolution Progress:**\n- Database connection pool size increased from 50 to 100\n- Connection timeout adjusted from 30s to 60s\n- Code review completed for connection cleanup\n- Targeted completion: 2025-08-10\n\nThis defect is directly connected to the QTest RunID 101 failure and shows active remediation efforts.',
-'["Jira"]'),
+('CI21324354', 'conv_stark_20250806_001', 
+'[
+    {
+        "role": "user", 
+        "content": "What testing data do you have for RunID 101?", 
+        "timestamp": "2025-08-06T15:45:00Z"
+    },
+    {
+        "role": "assistant", 
+        "content": "Based on my analysis of the QTest data files, RunID 101 shows the following testing information:\n\n**Test Execution Summary:**\n- Test Run: Login Functionality Test Suite\n- Tester: Sarah Johnson\n- Status: **Failed**\n- Execution Date: 2025-07-15\n- Environment: UAT\n\n**Failure Details:**\n- 3 out of 8 test cases failed\n- Primary issue: Authentication timeout after 30 seconds\n- Failed test cases: TC_LOGIN_001, TC_LOGIN_005, TC_LOGIN_007\n- Root cause: Database connection pool exhaustion\n\n**Cross-Reference with Jira:**\nThis failure is linked to Jira defect JIRA-123 which documents the authentication timeout issue and includes remediation steps.\n\nWould you like me to provide more details about any specific aspect of this test run?", 
+        "timestamp": "2025-08-06T15:45:15Z"
+    },
+    {
+        "role": "user", 
+        "content": "Tell me about the Jira defect JIRA-123 status", 
+        "timestamp": "2025-08-06T15:46:00Z"
+    },
+    {
+        "role": "assistant", 
+        "content": "Here are the details for Jira defect JIRA-123 related to the authentication timeout:\n\n**Defect Information:**\n- **Issue Key:** JIRA-123\n- **Title:** Authentication Timeout - Database Connection Pool Exhaustion\n- **Status:** In Progress\n- **Priority:** High\n- **Assignee:** Mike Chen (Senior Developer)\n- **Reporter:** Sarah Johnson (QA Lead)\n\n**Technical Details:**\n- Created: 2025-07-16 (day after test failure)\n- Environment: UAT, Production impact potential\n- Components: Authentication Service, Database Layer\n- Fix Version: Release 2.3.1\n\n**Resolution Progress:**\n- Database connection pool size increased from 50 to 100\n- Connection timeout adjusted from 30s to 60s  \n- Code review completed for connection cleanup\n- Targeted completion: 2025-08-10\n\nThis defect is directly connected to the QTest RunID 101 failure and shows active remediation efforts.", 
+        "timestamp": "2025-08-06T15:46:18Z"
+    }
+]',
+'2025-08-06 15:46:18'),
 
 -- Financial Systems Conversation
-('conv_fin_20250720_001', 'CI21345001', '1', 'Financial Systems Q2',
-'What financial controls documentation do you have available?',
-'I have comprehensive financial controls documentation available:\n\n**Key Control Areas Covered:**\n1. **Cash Management Controls**\n   - Daily reconciliation procedures\n   - Bank account monitoring\n   - Cash flow authorization limits\n\n2. **Journal Entry Controls**\n   - Two-level approval process\n   - Supporting documentation requirements\n   - Audit trail maintenance\n\n3. **Access Controls**\n   - Role-based permissions\n   - Segregation of duties matrix\n   - Periodic access reviews\n\nWould you like me to dive deeper into any specific control area or procedure?',
-'["SQL Server Database", "Oracle Database"]');
+('CI21345001', 'conv_fin_20250720_001',
+'[
+    {
+        "role": "user", 
+        "content": "What financial controls documentation do you have available?", 
+        "timestamp": "2025-07-20T10:30:00Z"
+    },
+    {
+        "role": "assistant", 
+        "content": "I have comprehensive financial controls documentation available:\n\n**Core Documents:**\n- Financial Systems Support Plan (1.8MB) - Complete operational procedures\n- Financial Data Flow Diagram (2.9MB) - System architecture and data flows\n\n**Key Control Areas Covered:**\n1. **Cash Management Controls**\n   - Daily reconciliation procedures\n   - Bank account monitoring\n   - Cash flow authorization limits\n\n2. **Journal Entry Controls**\n   - Two-level approval process\n   - Supporting documentation requirements\n   - Audit trail maintenance\n\n3. **Access Controls**\n   - Role-based permissions\n   - Segregation of duties matrix\n   - Periodic access reviews\n\n4. **Financial Reporting**\n   - Month-end close procedures\n   - Management reporting controls\n   - External reporting compliance\n\nWould you like me to dive deeper into any specific control area or procedure?", 
+        "timestamp": "2025-07-20T10:30:22Z"
+    }
+]',
+'2025-07-20 10:30:22');
 
 -- =====================================================
 -- DATA VALIDATION QUERIES
@@ -418,13 +425,13 @@ SELECT
     'data_collection_sessions' as table_name, COUNT(*) as record_count FROM data_collection_sessions
 UNION ALL
 SELECT 
-    'question_answers' as table_name, COUNT(*) as record_count FROM question_answers
-UNION ALL
-SELECT 
     'agent_executions' as table_name, COUNT(*) as record_count FROM agent_executions
 UNION ALL
 SELECT 
     'audit_results' as table_name, COUNT(*) as record_count FROM audit_results
+UNION ALL
+SELECT 
+    'context_documents' as table_name, COUNT(*) as record_count FROM context_documents
 UNION ALL
 SELECT 
     'veritas_conversations' as table_name, COUNT(*) as record_count FROM veritas_conversations
@@ -436,13 +443,11 @@ SELECT
     COUNT(tc.id) as connectors,
     COUNT(dr.id) as data_requests,
     COUNT(qa.id) as question_analyses,
-    COUNT(qans.id) as question_answers,
     COUNT(dcs.id) as sessions
 FROM applications a
 LEFT JOIN tool_connectors tc ON a.id = tc.application_id
 LEFT JOIN data_requests dr ON a.id = dr.application_id  
 LEFT JOIN question_analyses qa ON a.id = qa.application_id
-LEFT JOIN question_answers qans ON a.id = qans.application_id
 LEFT JOIN data_collection_sessions dcs ON a.id = dcs.application_id
 GROUP BY a.id, a.audit_name
 ORDER BY a.id;
@@ -461,11 +466,11 @@ ORDER BY a.id;
 \echo '  ✅ 14 Tool Connectors (Multi-system integration)'
 \echo '  ✅ 4 Data Requests (28 total questions: 21 primary + 7 follow-up)'
 \echo '  ✅ 8 Question Analyses (AI-powered recommendations)'
-\echo '  ✅ 5 Question Answers (Execution results with findings)'
 \echo '  ✅ 4 Data Collection Sessions (Including completed Stark G4)'
 \echo '  ✅ 6 Agent Executions (Realistic multi-tool results)'
 \echo '  ✅ 5 Audit Results (Final documented outcomes)'
-\echo '  ✅ 3 Veritas Conversations (Chat messages with tool usage)'
+\echo '  ✅ 8 Context Documents (Veritas GPT support)'
+\echo '  ✅ 2 Veritas Conversations (Chat history with cross-references)'
 \echo ''
 \echo 'Featured Data:'
 \echo '  🎯 Stark G4 (CI21324354): Complete 6-tool integration'
