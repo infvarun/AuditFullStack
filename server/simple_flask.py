@@ -1308,6 +1308,159 @@ def test_endpoint():
     }), 200
 
 
+# Folder-based execution endpoint (simplified approach like Veritas GPT)
+@app.route('/api/agents/execute-folder-based', methods=['POST'])
+def execute_folder_based_agents():
+    """Execute folder-based agents for data collection (simplified approach like Veritas GPT)"""
+    try:
+        from data_connectors import DataConnectorFactory
+
+        data = request.get_json()
+        application_id = data.get('applicationId')
+
+        if not application_id:
+            return jsonify({'error': 'Application ID is required'}), 400
+
+        # Get question analyses and application details
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({'error': 'Database connection failed'}), 500
+
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+        # Get application details and question analyses
+        cursor.execute(
+            """
+            SELECT qa.question_id, qa.original_question, qa.category, qa.subcategory,
+                   qa.tool_suggestion, qa.ai_prompt, qa.connector_reason,
+                   app.ci_id, app.audit_name
+            FROM question_analyses qa
+            JOIN applications app ON qa.application_id = app.id
+            WHERE qa.application_id = %s
+            ORDER BY qa.question_id
+        """, (application_id, ))
+
+        question_analyses = []
+        ci_id = None
+        for row in cursor.fetchall():
+            if ci_id is None:
+                ci_id = row['ci_id']
+            
+            analysis_data = {
+                'questionId': row['question_id'],
+                'originalQuestion': row['original_question'],
+                'category': row['category'],
+                'subcategory': row['subcategory'],
+                'toolSuggestion': row['tool_suggestion'],
+                'aiPrompt': row['ai_prompt'],
+                'connectorReason': row['connector_reason'],
+                'ciId': row['ci_id'],
+                'auditName': row['audit_name']
+            }
+            question_analyses.append(analysis_data)
+
+        if not question_analyses:
+            return jsonify({
+                'error': 'No question analyses found for this application. Please complete Step 2 first.'
+            }), 400
+
+        # Check if tools folder exists for this CI
+        tools_path = os.path.join(os.path.dirname(__file__), 'tools')
+        if not os.path.exists(os.path.join(tools_path, ci_id)):
+            return jsonify({
+                'error': f'Tools folder not found for CI {ci_id}. Expected: server/tools/{ci_id}/',
+                'availableTools': get_available_tools_for_ci(ci_id)
+            }), 404
+
+        # Create data connector factory (same as Veritas GPT)
+        connector_factory = DataConnectorFactory(tools_path, ci_id, llm)
+
+        # Execute data collection for all questions
+        execution_results = []
+
+        for question_analysis in question_analyses:
+            try:
+                start_time = datetime.now()
+                
+                # Use folder-based tool execution
+                tool_suggestion = question_analysis['toolSuggestion']
+                if isinstance(tool_suggestion, str):
+                    try:
+                        # Try to parse as JSON array if it looks like one
+                        if tool_suggestion.startswith('['):
+                            tool_suggestion = json.loads(tool_suggestion)
+                        else:
+                            tool_suggestion = [tool_suggestion]
+                    except:
+                        tool_suggestion = [tool_suggestion]
+                
+                # Execute using the same pattern as Veritas GPT
+                result = connector_factory.execute_tool_query(
+                    tool_suggestion[0] if tool_suggestion else 'sql_server',
+                    question_analysis['originalQuestion']
+                )
+                
+                end_time = datetime.now()
+                duration = (end_time - start_time).total_seconds()
+
+                # Format execution result
+                execution_result = {
+                    'questionId': question_analysis['questionId'],
+                    'originalQuestion': question_analysis['originalQuestion'],
+                    'toolsUsed': tool_suggestion,
+                    'duration': duration,
+                    'status': 'completed',
+                    'executedAt': datetime.now().isoformat(),
+                    'result': result,
+                    'folderBased': True
+                }
+
+                # Store execution result in database
+                cursor.execute(
+                    """
+                    INSERT INTO agent_executions 
+                    (application_id, question_id, result, executed_at)
+                    VALUES (%s, %s, %s, %s)
+                    ON CONFLICT (application_id, question_id) 
+                    DO UPDATE SET
+                        result = EXCLUDED.result,
+                        executed_at = EXCLUDED.executed_at
+                    RETURNING id
+                """, (application_id, execution_result['questionId'],
+                      json.dumps(execution_result), datetime.now()))
+
+                execution_id = cursor.fetchone()['id']
+                execution_result['databaseId'] = execution_id
+
+                execution_results.append(execution_result)
+
+            except Exception as e:
+                print(f"Error executing question {question_analysis['questionId']}: {e}")
+                # Continue with other questions
+                continue
+
+        conn.commit()
+
+        return jsonify({
+            'success': True,
+            'message': f'Successfully executed {len(execution_results)} questions using folder-based tools',
+            'executionResults': execution_results,
+            'totalQuestions': len(question_analyses),
+            'successfulExecutions': len(execution_results),
+            'ciId': ci_id,
+            'toolsPath': f'server/tools/{ci_id}'
+        }), 200
+
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        return jsonify({'error': f'Error executing folder-based agents: {str(e)}'}), 500
+
+    finally:
+        if 'conn' in locals() and conn:
+            cursor.close()
+            conn.close()
+
 # File-Based Agent Execution API
 @app.route('/api/agents/execute', methods=['POST'])
 def execute_agent_request():
@@ -1553,73 +1706,85 @@ def get_agent_executions(application_id):
             conn.close()
 
 
-# Tool Connectors API for Settings page
+# Folder-based Tool Connectors API (simplified approach like Veritas GPT)
+def get_available_tools_for_ci(ci_id):
+    """Get available tools from folder structure for a CI"""
+    tools_path = os.path.join(os.path.dirname(__file__), 'tools', ci_id)
+    available_tools = []
+    
+    if os.path.exists(tools_path):
+        for item in os.listdir(tools_path):
+            item_path = os.path.join(tools_path, item)
+            if os.path.isdir(item_path):
+                # Map folder names to connector types
+                folder_to_type = {
+                    'SQL_Server': 'SQL Server DB',
+                    'Oracle': 'Oracle DB',
+                    'Gnosis': 'Gnosis Document Repository',
+                    'ServiceNow': 'ServiceNow',
+                    'Jira': 'Jira',
+                    'QTest': 'QTest'
+                }
+                
+                connector_type = folder_to_type.get(item, item)
+                available_tools.append({
+                    'folderName': item,
+                    'connectorType': connector_type,
+                    'status': 'active',  # Folder-based tools are always active
+                    'hasData': len(os.listdir(item_path)) > 0
+                })
+    
+    return available_tools
+
+@app.route('/api/connectors/available/<ci_id>', methods=['GET'])
+def get_available_connectors(ci_id):
+    """Get available connectors from folder structure"""
+    try:
+        available_tools = get_available_tools_for_ci(ci_id)
+        
+        return jsonify({
+            'availableConnectors': available_tools,
+            'folderPath': f'server/tools/{ci_id}',
+            'totalTools': len(available_tools)
+        }), 200
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/connectors', methods=['POST'])
 def create_tool_connector():
-    """Create new tool connector"""
+    """Create tool connector (simplified for folder-based approach)"""
     try:
         data = request.get_json()
         if not data:
             return jsonify({'error': 'No data provided'}), 400
 
-        # Find application by CI ID
-        conn = get_db_connection()
-        if not conn:
-            return jsonify({'error': 'Database connection failed'}), 500
-
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-        cursor.execute("SELECT id FROM applications WHERE ci_id = %s LIMIT 1",
-                       (data.get('ciId'), ))
-        app_row = cursor.fetchone()
-
-        if not app_row:
+        ci_id = data.get('ciId')
+        connector_type = data.get('connectorType')
+        
+        # Check if folder exists for this CI and connector type
+        available_tools = get_available_tools_for_ci(ci_id)
+        
+        if not any(tool['connectorType'] == connector_type for tool in available_tools):
             return jsonify({
-                'error':
-                f'No application found for CI ID: {data.get("ciId")}'
+                'error': f'Tool folder not found for {connector_type}',
+                'availableTools': [tool['connectorType'] for tool in available_tools]
             }), 404
 
-        application_id = app_row['id']
-
-        # Get connector name from data, or generate default
-        connector_name = data.get('connectorName')
-        if not connector_name:
-            connector_name = f"{data.get('connectorType', 'Unknown')} - {application_id}"
-
-        # Insert tool connector
-        cursor.execute(
-            """
-            INSERT INTO tool_connectors (application_id, ci_id, connector_name, connector_type, configuration, status)
-            VALUES (%s, %s, %s, %s, %s, %s)
-            RETURNING id, application_id, ci_id, connector_name, connector_type, configuration, status, created_at
-        """, (application_id, data.get('ciId'), connector_name,
-              data.get('connectorType'),
-              json.dumps(data.get('configuration',
-                                  {})), data.get('status', 'pending')))
-
-        row = cursor.fetchone()
-        conn.commit()
-
+        # For folder-based approach, just return success with tool info
         connector_data = {
-            'id': row['id'],
-            'applicationId': row['application_id'],
-            'ciId': row['ci_id'],
-            'connectorName': row['connector_name'],
-            'connectorType': row['connector_type'],
-            'configuration': row['configuration'],
-            'status': row['status'],
-            'createdAt': row['created_at']
+            'id': f"folder_{ci_id}_{connector_type.replace(' ', '_')}",
+            'ciId': ci_id,
+            'connectorType': connector_type,
+            'status': 'active',
+            'folderBased': True,
+            'createdAt': datetime.now().isoformat()
         }
 
         return jsonify(connector_data), 201
 
     except Exception as e:
-        if conn:
-            conn.rollback()
         return jsonify({'error': str(e)}), 500
-    finally:
-        if conn:
-            cursor.close()
-            conn.close()
 
 
 @app.route('/api/questions/save-answer', methods=['POST'])
@@ -2693,43 +2858,28 @@ def database_health_check():
 # Get connectors by CI ID endpoint (for Settings page)
 @app.route('/api/connectors/ci/<string:ci_id>', methods=['GET'])
 def get_connectors_by_ci(ci_id):
-    """Get all connectors for a specific CI ID"""
+    """Get all connectors for a specific CI ID (folder-based approach)"""
     try:
-        conn = get_db_connection()
-        if not conn:
-            return jsonify({'error': 'Database connection failed'}), 500
-
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-        cursor.execute(
-            """
-            SELECT id, application_id, ci_id, connector_name, connector_type, 
-                   configuration, status, created_at
-            FROM tool_connectors 
-            WHERE ci_id = %s
-            ORDER BY created_at DESC
-        """, (ci_id, ))
-
+        # Get available tools from folder structure
+        available_tools = get_available_tools_for_ci(ci_id)
+        
+        # Format as connectors for frontend compatibility
         connectors = []
-        for row in cursor.fetchall():
+        for tool in available_tools:
             connector_data = {
-                'id':
-                row['id'],
-                'applicationId':
-                row['application_id'],
-                'ciId':
-                row['ci_id'],
-                'connectorName':
-                row['connector_name'],
-                'connectorType':
-                row['connector_type'],
-                'configuration':
-                json.loads(row['configuration']) if isinstance(
-                    row['configuration'], str) else
-                (row['configuration'] if row['configuration'] else {}),
-                'status':
-                row['status'],
-                'createdAt':
-                row['created_at']
+                'id': f"folder_{ci_id}_{tool['folderName']}",
+                'applicationId': None,  # Not needed for folder-based
+                'ciId': ci_id,
+                'connectorName': f"{tool['connectorType']} (Folder-based)",
+                'connectorType': tool['connectorType'],
+                'configuration': {
+                    'folderPath': f"server/tools/{ci_id}/{tool['folderName']}",
+                    'folderBased': True
+                },
+                'status': tool['status'],
+                'folderBased': True,
+                'hasData': tool['hasData'],
+                'createdAt': datetime.now().isoformat()
             }
             connectors.append(connector_data)
 
@@ -2737,10 +2887,6 @@ def get_connectors_by_ci(ci_id):
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-    finally:
-        if conn:
-            cursor.close()
-            conn.close()
 
 
 # ============= VERITAS GPT ENDPOINTS =============
