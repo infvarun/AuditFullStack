@@ -7,15 +7,14 @@
 
 -- Drop existing tables in correct order (respects foreign key constraints)
 DROP TABLE IF EXISTS veritas_conversations CASCADE;
-DROP TABLE IF EXISTS context_documents CASCADE;
 DROP TABLE IF EXISTS audit_results CASCADE;
+DROP TABLE IF EXISTS question_answers CASCADE;
 DROP TABLE IF EXISTS agent_executions CASCADE;
 DROP TABLE IF EXISTS question_analyses CASCADE;
 DROP TABLE IF EXISTS data_collection_sessions CASCADE;
 DROP TABLE IF EXISTS data_requests CASCADE;
 DROP TABLE IF EXISTS tool_connectors CASCADE;
 DROP TABLE IF EXISTS applications CASCADE;
-DROP TABLE IF EXISTS sessions CASCADE;
 
 -- Drop indexes if they exist
 DROP INDEX IF EXISTS idx_applications_ci_id;
@@ -47,18 +46,6 @@ DROP INDEX IF EXISTS idx_veritas_conversations_conversation_id;
 DROP INDEX IF EXISTS "IDX_session_expire";
 
 -- =====================================================
--- SESSION MANAGEMENT (Required for Replit Auth)
--- =====================================================
-
-CREATE TABLE sessions (
-    sid VARCHAR NOT NULL COLLATE "default",
-    sess JSON NOT NULL,
-    expire TIMESTAMP(6) NOT NULL
-);
-
-ALTER TABLE sessions ADD CONSTRAINT sessions_pkey PRIMARY KEY (sid);
-
--- =====================================================
 -- CORE AUDIT TABLES
 -- =====================================================
 
@@ -71,8 +58,9 @@ CREATE TABLE applications (
     start_date TEXT NOT NULL,
     end_date TEXT NOT NULL,
     settings JSON DEFAULT '{}',
-    status TEXT DEFAULT 'In Progress',
-    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()
+    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+    enable_followup_questions BOOLEAN DEFAULT false,
+    status VARCHAR DEFAULT 'In Progress'
 );
 
 -- Data Requests: File upload tracking and question parsing  
@@ -87,7 +75,8 @@ CREATE TABLE data_requests (
     categories JSON NOT NULL,
     subcategories JSON NOT NULL,
     column_mappings JSON NOT NULL,
-    uploaded_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()
+    uploaded_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+    file_path TEXT
 );
 
 -- Tool Connectors: External system integration configurations
@@ -98,7 +87,8 @@ CREATE TABLE tool_connectors (
     connector_type TEXT NOT NULL,
     configuration JSON NOT NULL,
     status TEXT NOT NULL DEFAULT 'pending',
-    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()
+    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+    connector_name VARCHAR
 );
 
 -- Data Collection Sessions: Progress tracking for data gathering
@@ -124,7 +114,8 @@ CREATE TABLE question_analyses (
     tool_suggestion TEXT NOT NULL,
     connector_reason TEXT NOT NULL,
     connector_to_use TEXT NOT NULL,
-    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()
+    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+    connector_id INTEGER
 );
 
 -- Audit Results: Final audit outcomes and document generation
@@ -141,28 +132,35 @@ CREATE TABLE audit_results (
 );
 
 -- =====================================================
--- VERITAS GPT & DOCUMENT MANAGEMENT TABLES  
+-- QUESTION ANSWERS & VERITAS GPT TABLES
 -- =====================================================
 
--- Context Documents: Document upload and management for Veritas GPT
-CREATE TABLE context_documents (
+-- Question Answers: AI agent execution results (separate from agent_executions)
+CREATE TABLE question_answers (
     id SERIAL PRIMARY KEY,
-    ci_id TEXT NOT NULL,
-    document_type TEXT NOT NULL, -- support_plan, design_diagram, additional_supplements, other
-    file_name TEXT NOT NULL,
-    file_path TEXT NOT NULL,
-    file_size INTEGER NOT NULL,
-    uploaded_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()
+    application_id INTEGER REFERENCES applications(id) ON DELETE CASCADE,
+    question_id VARCHAR(50) NOT NULL,
+    answer TEXT,
+    findings JSONB,
+    risk_level VARCHAR(20) DEFAULT 'Low',
+    compliance_status VARCHAR(50) DEFAULT 'Compliant',
+    data_points INTEGER DEFAULT 0,
+    execution_details JSONB,
+    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Veritas Conversations: Chat conversation storage for Veritas GPT
+-- Veritas Conversations: Chat conversation storage for Veritas GPT (current schema)
 CREATE TABLE veritas_conversations (
     id SERIAL PRIMARY KEY,
-    ci_id TEXT NOT NULL,
-    conversation_id TEXT NOT NULL,
-    messages JSON NOT NULL DEFAULT '[]',
-    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()
+    conversation_id VARCHAR NOT NULL,
+    ci_id VARCHAR NOT NULL,
+    audit_id VARCHAR NOT NULL,
+    audit_name VARCHAR,
+    message TEXT NOT NULL,
+    response TEXT NOT NULL,
+    tools_used JSONB DEFAULT '[]',
+    timestamp TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- =====================================================
@@ -173,23 +171,20 @@ CREATE TABLE veritas_conversations (
 CREATE TABLE agent_executions (
     id SERIAL PRIMARY KEY,
     application_id INTEGER NOT NULL REFERENCES applications(id) ON DELETE CASCADE,
-    question_id VARCHAR(255) NOT NULL,
-    tool_type VARCHAR(100) NOT NULL,
+    question_id VARCHAR NOT NULL,
+    tool_type VARCHAR NOT NULL,
     connector_id INTEGER NOT NULL REFERENCES tool_connectors(id) ON DELETE CASCADE,
     prompt TEXT NOT NULL,
     result TEXT,
-    status VARCHAR(50) DEFAULT 'pending',
+    status VARCHAR DEFAULT 'pending',
     created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    tool_used VARCHAR(100),
+    tool_used VARCHAR,
     execution_details JSONB
 );
 
 -- =====================================================
 -- INDEXES FOR PERFORMANCE
 -- =====================================================
-
--- Session indexes
-CREATE INDEX "IDX_session_expire" ON sessions (expire);
 
 -- Applications indexes
 CREATE INDEX idx_applications_ci_id ON applications(ci_id);
@@ -221,15 +216,15 @@ CREATE INDEX idx_audit_results_application_id ON audit_results(application_id);
 CREATE INDEX idx_audit_results_session_id ON audit_results(session_id);
 CREATE INDEX idx_audit_results_category ON audit_results(category);
 
+-- Question Answers indexes
+CREATE INDEX idx_question_answers_application_id ON question_answers(application_id);
+CREATE INDEX idx_question_answers_question_id ON question_answers(question_id);
+
 -- Agent Executions indexes
 CREATE INDEX idx_agent_executions_application_id ON agent_executions(application_id);
 CREATE INDEX idx_agent_executions_question_id ON agent_executions(question_id);
 CREATE INDEX idx_agent_executions_tool_type ON agent_executions(tool_type);
 CREATE INDEX idx_agent_executions_status ON agent_executions(status);
-
--- Context Documents indexes
-CREATE INDEX idx_context_documents_ci_id ON context_documents(ci_id);
-CREATE INDEX idx_context_documents_document_type ON context_documents(document_type);
 
 -- Veritas Conversations indexes
 CREATE INDEX idx_veritas_conversations_ci_id ON veritas_conversations(ci_id);
@@ -254,10 +249,10 @@ ALTER TABLE tool_connectors
 ADD CONSTRAINT unique_ci_connector_type 
 UNIQUE (ci_id, connector_type);
 
--- Ensure unique ci_id/document_type/file_name combinations
-ALTER TABLE context_documents 
-ADD CONSTRAINT unique_ci_document_type 
-UNIQUE (ci_id, document_type, file_name);
+-- Ensure unique application/question combinations in question_answers
+ALTER TABLE question_answers 
+ADD CONSTRAINT question_answers_application_id_question_id_key 
+UNIQUE (application_id, question_id);
 
 -- =====================================================
 -- CHECK CONSTRAINTS AND BUSINESS RULES
@@ -280,10 +275,7 @@ ALTER TABLE data_requests
 ADD CONSTRAINT chk_file_type 
 CHECK (file_type IN ('primary', 'followup'));
 
--- Ensure valid document types
-ALTER TABLE context_documents 
-ADD CONSTRAINT chk_document_type 
-CHECK (document_type IN ('support_plan', 'design_diagram', 'additional_supplements', 'other'));
+
 
 -- Ensure valid statuses
 ALTER TABLE data_collection_sessions 
@@ -311,15 +303,14 @@ CHECK (progress >= 0 AND progress <= 100);
 -- COMMENTS FOR DOCUMENTATION
 -- =====================================================
 
-COMMENT ON TABLE sessions IS 'Session storage for Replit Auth authentication system';
 COMMENT ON TABLE applications IS 'Core audit application records with metadata and settings';
 COMMENT ON TABLE data_requests IS 'File upload tracking with Excel parsing results and question extraction';
 COMMENT ON TABLE tool_connectors IS 'External system integration configurations for data collection';
 COMMENT ON TABLE data_collection_sessions IS 'Progress tracking for automated data collection processes';
 COMMENT ON TABLE question_analyses IS 'AI-powered question analysis with tool recommendations and reasoning';
+COMMENT ON TABLE question_answers IS 'AI agent execution results with findings and compliance status';
 COMMENT ON TABLE audit_results IS 'Final audit outcomes with document generation tracking';
-COMMENT ON TABLE context_documents IS 'Document upload and management for Veritas GPT context-aware chat';
-COMMENT ON TABLE veritas_conversations IS 'Chat conversation storage with message history and state persistence';
+COMMENT ON TABLE veritas_conversations IS 'Chat conversation storage for Veritas GPT with individual message tracking';
 COMMENT ON TABLE agent_executions IS 'Individual AI agent executions with prompts, results, and execution tracking';
 
 -- Key column comments
@@ -333,8 +324,11 @@ COMMENT ON COLUMN question_analyses.connector_reason IS 'AI reasoning for tool r
 COMMENT ON COLUMN data_collection_sessions.logs IS 'JSON array of execution logs and status updates';
 COMMENT ON COLUMN agent_executions.result IS 'AI agent execution result or error message with analysis data';
 COMMENT ON COLUMN agent_executions.execution_details IS 'JSONB with detailed execution metadata and confidence scores';
-COMMENT ON COLUMN context_documents.document_type IS 'Document type: support_plan, design_diagram, additional_supplements, or other';
-COMMENT ON COLUMN veritas_conversations.messages IS 'JSON array of conversation messages with timestamps and metadata';
+COMMENT ON COLUMN question_answers.findings IS 'JSONB with detailed findings and analysis results';
+COMMENT ON COLUMN question_answers.execution_details IS 'JSONB with execution metadata and confidence scores';
+COMMENT ON COLUMN veritas_conversations.tools_used IS 'JSONB array of tools used during conversation response';
+COMMENT ON COLUMN veritas_conversations.message IS 'User message text';
+COMMENT ON COLUMN veritas_conversations.response IS 'AI assistant response text';
 
 -- =====================================================
 -- SCHEMA VALIDATION QUERIES
@@ -387,15 +381,14 @@ ORDER BY tablename, indexname;
 \echo '============================================='
 \echo ''
 \echo 'Tables created:'
-\echo '  ✅ sessions (Replit Auth support)'  
 \echo '  ✅ applications (audit projects)'
 \echo '  ✅ data_requests (file uploads & questions)'
 \echo '  ✅ tool_connectors (system integrations)'
 \echo '  ✅ data_collection_sessions (progress tracking)'
 \echo '  ✅ question_analyses (AI analysis results)'
+\echo '  ✅ question_answers (execution results)'
 \echo '  ✅ audit_results (final outcomes)'
-\echo '  ✅ context_documents (Veritas GPT docs)'
-\echo '  ✅ veritas_conversations (chat history)'
+\echo '  ✅ veritas_conversations (chat messages)'
 \echo '  ✅ agent_executions (AI execution tracking)'
 \echo ''
 \echo 'Features:'
