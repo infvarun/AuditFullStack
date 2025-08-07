@@ -81,6 +81,33 @@ INSERT INTO veritas_conversations (id, conversation_id, ci_id, audit_id, audit_n
 (7, 'conv_CI21324354_1754489685', 'CI21324354', 9, 'Test Audit', 'What user roles are in the SQL Server database?', 'To determine the user roles in the SQL Server database, we can refer to the "User_Role.xlsx" file from the SQL Server data. Here are the roles identified: 1. **Administrator** 2. **Data Analyst** 3. **Researcher** 4. **Guest** 5. **IT Support**', '["sql_server", "oracle_db"]', '2025-08-06 14:14:46.013972');
 
 -- =====================================================
+-- CONSTRAINT FIXES
+-- =====================================================
+
+-- Drop any existing restrictive check constraint on connector_type
+ALTER TABLE tool_connectors 
+DROP CONSTRAINT IF EXISTS chk_connector_type;
+
+-- Add updated constraint that allows all current production connector types
+ALTER TABLE tool_connectors 
+ADD CONSTRAINT chk_connector_type 
+CHECK (connector_type IN (
+    'SQL Server DB',
+    'Oracle DB', 
+    'Gnosis Document Repository',
+    'ServiceNow',
+    'Jira',
+    'QTest',
+    -- Legacy format compatibility
+    'sql_server',
+    'oracle_db',
+    'gnosis',
+    'service_now',
+    'jira',
+    'qtest'
+));
+
+-- =====================================================
 -- END OF DATABASE DUMP
 -- =====================================================
 
