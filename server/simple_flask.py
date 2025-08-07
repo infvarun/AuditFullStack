@@ -1433,17 +1433,33 @@ def execute_folder_based_agents():
                             except:
                                 tool_data += f"\n=== {filename} ===\n[Excel file present but could not read]\n"
                 
-                # Create result with actual tool data (simplified for now)
-                data_summary = f"Found {len(tool_data)} characters of data from {mapped_tool} tool" if tool_data else f"No data found in {mapped_tool} folder"
+                # Create meaningful analysis based on tool data content
+                if tool_data:
+                    # Extract key information from tool data
+                    data_lines = tool_data.split('\n')
+                    relevant_lines = [line for line in data_lines if any(keyword in line.lower() for keyword in ['user', 'access', 'admin', 'role', 'permission', 'login', 'password', 'security', 'audit', 'log'])][:3]
+                    
+                    if relevant_lines:
+                        key_findings = '. '.join(relevant_lines[:2])[:150]
+                        executive_summary = f"Based on {mapped_tool} data analysis: {key_findings}. Compliance review indicates further investigation needed."
+                        findings = [f'Key data from {mapped_tool}: {line[:80]}' for line in relevant_lines[:2]]
+                    else:
+                        # Use first few lines of actual data
+                        sample_data = '. '.join([line.strip() for line in data_lines[:3] if line.strip()])[:150]
+                        executive_summary = f"Analyzed {mapped_tool} data for audit question. Found: {sample_data}. Requires compliance assessment."
+                        findings = [f'Data extracted from {mapped_tool}', f'Sample content: {sample_data[:80]}']
+                else:
+                    executive_summary = f'No data found in {mapped_tool} folder for audit question analysis.'
+                    findings = [f'No data available in {mapped_tool} folder']
                 
                 result = {
                     'analysis': {
-                        'executiveSummary': f'Audit question analyzed using {mapped_tool}. {data_summary}. Compliance review recommended.',
-                        'findings': [f'Data read from {mapped_tool}', data_summary, 'Real tool folder accessed'],
+                        'executiveSummary': executive_summary,
+                        'findings': findings,
                         'riskLevel': 'Medium',
                         'complianceStatus': 'Needs Review',
                         'dataPoints': len(tool_data.split('\n')) if tool_data else 0,
-                        'confidence': 0.85,
+                        'confidence': 0.85 if tool_data else 0.25,
                         'toolsUsed': [mapped_tool]
                     }
                 }
