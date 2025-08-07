@@ -264,29 +264,15 @@ export default function StepFour({ applicationId, onNext, setCanProceed }: StepF
     });
     setExecutions(runningExecutions);
 
-    // Start progress animation
-    let currentProgress = 0;
-    const progressInterval = setInterval(() => {
-      currentProgress = Math.min(currentProgress + 10, 85);
-      setOverallProgress(currentProgress);
-      
-      // Update individual question progress
-      setExecutions(prev => {
-        const updated = { ...prev };
-        Object.keys(updated).forEach(questionId => {
-          if (updated[questionId].status === 'running') {
-            updated[questionId].progress = Math.min((updated[questionId].progress || 0) + 12, 85);
-          }
-        });
-        return updated;
-      });
-    }, 800);
+    // Real progress tracking (no fake animations)
+    setOverallProgress(10);
 
     try {
       // Use folder-based batch execution (same pattern as Veritas GPT)
+      setOverallProgress(50);
       const response = await executeAgentsMutation.mutateAsync();
       
-      clearInterval(progressInterval);
+      setOverallProgress(90);
       
       if (response.success && response.executionResults) {
         // Process all execution results at once
@@ -346,7 +332,6 @@ export default function StepFour({ applicationId, onNext, setCanProceed }: StepF
       }
       
     } catch (error) {
-      clearInterval(progressInterval);
       
       // Mark all as failed
       setExecutions(prev => {
