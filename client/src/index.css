@@ -108,6 +108,49 @@
   .glass-effect {
     @apply bg-white/10 backdrop-blur-lg border border-white/20 shadow-xl;
   }
+
+  /* Veritas GPT Table Styling */
+  .prose table {
+    @apply border-2 border-purple-400 rounded-lg overflow-hidden shadow-md;
+    border-collapse: separate;
+    border-spacing: 0;
+    width: 100%;
+    margin: 1rem 0;
+  }
+
+  .prose thead {
+    @apply bg-purple-600;
+  }
+
+  .prose th {
+    @apply border-b-2 border-purple-400 px-4 py-3 text-white font-bold text-left;
+    border-right: 1px solid rgb(147 51 234 / 0.3);
+  }
+
+  .prose th:last-child {
+    border-right: none;
+  }
+
+  .prose td {
+    @apply border-b border-purple-200 px-4 py-3 text-slate-700;
+    border-right: 1px solid rgb(147 51 234 / 0.2);
+  }
+
+  .prose td:last-child {
+    border-right: none;
+  }
+
+  .prose tbody tr:nth-child(even) {
+    @apply bg-purple-50;
+  }
+
+  .prose tbody tr:hover {
+    @apply bg-purple-100 transition-colors duration-200;
+  }
+
+  .prose tbody tr:last-child td {
+    border-bottom: none;
+  }
 }
 
 @keyframes aiPulse {
